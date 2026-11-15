@@ -1,4 +1,4 @@
-// Draws the PNG home-screen icons (ink tile with a white coin) without extra packages.
+// Draws the PNG home-screen icons (ink tile, white K, pink plus) without extra packages.
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
 
@@ -14,21 +14,24 @@ function chunk(type, data) {
 }
 
 function draw(size) {
-  const ink = [23, 23, 23]; const white = [255, 255, 255];
+  const ink = [23, 23, 23]; const white = [255, 255, 255]; const pink = [240, 98, 146];
   const raw = Buffer.alloc((size * 4 + 1) * size);
-  const cx = size / 2; const cy = size * 0.53; const r = size * 0.3;
+  // Same mark as public/icon.svg (64-unit grid): a white K and a pink plus, drawn as round-capped strokes.
+  const k = size / 64; const half = 2.75;
+  const dist = (px, py, [x1, y1, x2, y2]) => {
+    const vx = x2 - x1; const vy = y2 - y1;
+    const t = Math.max(0, Math.min(1, ((px - x1) * vx + (py - y1) * vy) / (vx * vx + vy * vy)));
+    return Math.hypot(px - (x1 + t * vx), py - (y1 + t * vy));
+  };
+  const K = [[18, 18, 18, 46], [18, 33, 32, 18], [24, 27, 35, 46]];
+  const PLUS = [[46, 14, 46, 26], [40, 20, 52, 20]];
   for (let y = 0; y < size; y++) {
     raw[y * (size * 4 + 1)] = 0;
     for (let x = 0; x < size; x++) {
-      const dx = x + 0.5 - cx; const dy = y + 0.5 - cy; const d = Math.hypot(dx, dy);
+      const px = (x + 0.5) / k; const py = (y + 0.5) / k;
       let col = ink;
-      if (d < r) col = white;
-      // simple "$"-like bar and two arcs in ink inside the coin
-      const u = dx / r; const v = dy / r;
-      const bar = Math.abs(u) < 0.07 && Math.abs(v) < 0.72;
-      const ring = (oy) => { const dd = Math.hypot(u, v - oy); return dd > 0.24 && dd < 0.38; };
-      const s = (ring(-0.28) && !(u > 0.05 && v > -0.28 && v < 0)) || (ring(0.28) && !(u < -0.05 && v < 0.28 && v > 0));
-      if (d < r && (bar || s)) col = ink;
+      if (K.some((s) => dist(px, py, s) < half)) col = white;
+      else if (PLUS.some((s) => dist(px, py, s) < half)) col = pink;
       const o = y * (size * 4 + 1) + 1 + x * 4;
       raw[o] = col[0]; raw[o + 1] = col[1]; raw[o + 2] = col[2]; raw[o + 3] = 255;
     }

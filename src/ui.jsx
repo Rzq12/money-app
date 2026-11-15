@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { dict } from './i18n.js';
 import { useStore, formatMoney, firstDayOfWeek, store } from './store.js';
+import { billBase } from './logic.js';
 
 export const LangCtx = createContext('id');
 export function useT() {
@@ -40,6 +41,22 @@ const ICONS = {
   backspace: <path d="M9 5.5h10.5a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9L3 12l6-6.5ZM12 9.5l5 5M17 9.5l-5 5" />,
   calendar: <><rect x="4" y="5.5" width="16" height="15" rx="2" /><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4" /></>,
   check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
+  grid: <path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" />,
+  flag: <path d="M5 21V4M5 4.5h11l-2 4 2 4H5" />,
+  trend: <path d="M3 17l6-6 4 4 8-8M15 7h6v6" />,
+  swapV: <path d="M7 20V4M3.5 7.5L7 4l3.5 3.5M17 4v16M13.5 16.5L17 20l3.5-3.5" />,
+  repeat: <path d="M4 11V9a3 3 0 0 1 3-3h12M16 3l3 3-3 3M20 13v2a3 3 0 0 1-3 3H5M8 21l-3-3 3-3" />,
+  filter: <path d="M4 5h16l-6 7.5v6l-4-2v-4L4 5Z" />,
+  receipt: <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3ZM9 8h6M9 12h6" />,
+  chat: <path d="M5 4.5h14a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-8l-5 4v-4H5a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1Z" />,
+  inbox: <path d="M4 13l2.5-8h11L20 13v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-5ZM4 13h5l1 2.5h4l1-2.5h5" />,
+  archive: <path d="M4 5h16v4H4zM5.5 9v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V9M10 13h4" />,
+  home: <path d="M4 11l8-7 8 7M6 9.5V20h12V9.5M10 20v-6h4v6" />,
+  percent: <><path d="M6 18L18 6" /><circle cx="7.5" cy="7.5" r="2" /><circle cx="16.5" cy="16.5" r="2" /></>,
+  mic: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3" /></>,
+  camera: <><path d="M4 8a1 1 0 0 1 1-1h2.5l1.5-2h6l1.5 2H19a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V8Z" /><circle cx="12" cy="13" r="3.5" /></>,
+  send: <path d="M4 12l16-7-6 16-3-7-7-2Z" />,
+  alert: <><circle cx="12" cy="12" r="9" /><path d="M12 7.5v5.5M12 16.3v.200" /></>,
 };
 export function Icon({ name, size = 20 }) {
   return (
@@ -51,8 +68,9 @@ export function Logo({ small }) {
   const s = small ? 18 : 30;
   return (
     <span className={`logo-mark ${small ? 'sm' : ''}`} aria-hidden="true">
-      <svg viewBox="0 0 24 24" width={s} height={s} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-        <path d="M12 4v16M16 8c-.7-1.3-2.2-2-4-2-2.2 0-4 1.2-4 3 0 4 8 2 8 6 0 1.8-1.8 3-4 3-1.8 0-3.3-.7-4-2" />
+      <svg viewBox="0 0 24 24" width={s} height={s} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M6.5 6v12M6.5 12.5l6-6.5M9 10l5 8" />
+        <path d="M18 4.5v5M15.5 7h5" stroke="var(--accent)" />
       </svg>
     </span>
   );
@@ -61,24 +79,46 @@ export function Logo({ small }) {
 export function CatIcon({ icon, color = '#888888', size = 40 }) {
   return (
     <span className="caticon" style={{ width: size, height: size, background: color + '33', fontSize: size * 0.52 }}>
-      <span aria-hidden="true">{icon}</span>
+      <span aria-hidden="true">{icon || '?'}</span>
     </span>
   );
 }
 
-export function Sheet({ open, onClose, title, children, actions, full }) {
+// Keeps keyboard focus inside a dialog while it is open and hands it back on close.
+// Escape closes only the top-most dialog, because the handler sits on the dialog itself.
+function useDialogFocus(open, onClose) {
+  const ref = useRef(null); const close = useRef(onClose); close.current = onClose;
+  // Remember the opener during render: by the time the effect runs, an autofocused field
+  // inside the dialog has already taken focus.
+  const opener = useRef(null);
+  if (open && !opener.current) opener.current = document.activeElement;
   useEffect(() => {
     if (!open) return undefined;
-    const k = (e) => e.key === 'Escape' && onClose?.();
-    window.addEventListener('keydown', k);
-    return () => window.removeEventListener('keydown', k);
-  }, [open, onClose]);
+    const el = ref.current; const prev = opener.current; opener.current = null;
+    if (!el.contains(document.activeElement)) el.focus();
+    const k = (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); close.current?.(); return; }
+      if (e.key !== 'Tab') return;
+      const f = [...el.querySelectorAll('button, [href], input, select, textarea')].filter((x) => !x.disabled && x.offsetParent !== null);
+      if (!f.length) return;
+      if (e.shiftKey && (document.activeElement === f[0] || document.activeElement === el)) { e.preventDefault(); f[f.length - 1].focus(); }
+      else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+    };
+    el.addEventListener('keydown', k);
+    return () => { el.removeEventListener('keydown', k); prev?.focus?.(); };
+  }, [open]);
+  return ref;
+}
+
+export function Sheet({ open, onClose, title, children, actions, full }) {
+  const t = useT();
+  const ref = useDialogFocus(open, onClose);
   if (!open) return null;
   return (
     <div className="sheet-wrap" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
-      <div className={`sheet ${full ? 'full' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
+      <div ref={ref} tabIndex={-1} className={`sheet ${full ? 'full' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
         <div className="sheet-head">
-          <button className="icon-btn" onClick={onClose} aria-label="Tutup"><Icon name="close" /></button>
+          <button className="icon-btn" onClick={onClose} aria-label={t.close}><Icon name="close" /></button>
           <h2>{title}</h2>
           <div className="sheet-actions">{actions}</div>
         </div>
@@ -88,15 +128,89 @@ export function Sheet({ open, onClose, title, children, actions, full }) {
   );
 }
 
-export function Segmented({ value, onChange, options, light }) {
+// In-app confirmation, used instead of the browser's own confirm/alert boxes.
+let ask = null;
+export function confirmAsk(msg, opts = {}) {
+  return new Promise((res) => (ask ? ask({ msg, ...opts, res }) : res(window.confirm(msg))));
+}
+export const notify = (msg) => confirmAsk(msg, { info: true });
+export function ConfirmHost() {
+  const t = useT(); const [q, setQ] = useState(null);
+  useEffect(() => { ask = setQ; return () => { ask = null; }; }, []);
+  const done = (v) => { q?.res(v); setQ(null); };
+  const ref = useDialogFocus(!!q, () => done(false));
+  if (!q) return null;
   return (
-    <div className={`seg ${light ? 'seg-light' : ''}`} role="tablist">
+    <div className="sheet-wrap center top" onMouseDown={(e) => e.target === e.currentTarget && done(false)}>
+      <div ref={ref} tabIndex={-1} className="dialog" role="alertdialog" aria-modal="true" aria-label={q.msg}>
+        <p>{q.msg}</p>
+        <div className="btn-row end">
+          {!q.info && <button className="btn" onClick={() => done(false)}>{t.cancel}</button>}
+          <button className={`btn ${q.danger ? 'danger' : 'primary'}`} autoFocus onClick={() => done(true)}>{q.info ? t.ok : q.okLabel || t.yes}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// One choice out of a few: a radio group, moved with the arrow keys.
+export function Segmented({ value, onChange, options, label }) {
+  const move = (e) => {
+    const d = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+    if (!d) return;
+    e.preventDefault();
+    const i = (options.findIndex((o) => o.value === value) + d + options.length) % options.length;
+    onChange(options[i].value);
+    e.currentTarget.querySelectorAll('button')[i]?.focus();
+  };
+  return (
+    <div className="seg" role="radiogroup" aria-label={label} onKeyDown={move}>
       {options.map((o) => (
-        <button key={o.value} role="tab" aria-selected={value === o.value}
+        <button key={o.value} type="button" role="radio" aria-checked={value === o.value} tabIndex={value === o.value ? 0 : -1}
           className={value === o.value ? 'on' : ''} onClick={() => onChange(o.value)}>{o.label}</button>
       ))}
     </div>
   );
+}
+
+export const go = (path) => { location.hash = `#/${path}`; };
+
+// Page header for the feature pages. The back link only shows on phones, where there is no sidebar.
+export function PageHead({ title, sub, action, back = true }) {
+  const t = useT();
+  return (
+    <header className="hero compact">
+      <div className="hero-top">
+        <div className="head-l">
+          {back && <a className="icon-btn back" href="#/lainnya" aria-label={t.back}><Icon name="chevL" /></a>}
+          <h1 className="hero-title">{title}</h1>
+        </div>
+        {action}
+      </div>
+      {sub && <p className="head-sub">{sub}</p>}
+    </header>
+  );
+}
+export function Empty({ icon = 'ledger', title, hint, children, small }) {
+  return (
+    <div className={`empty ${small ? 'small' : ''}`}>
+      {!small && <div className="empty-art" aria-hidden="true"><Icon name={icon} size={22} /></div>}
+      <p>{title}</p>{hint && <small>{hint}</small>}
+      {children && <div className="empty-act">{children}</div>}
+    </div>
+  );
+}
+export function AddBtn({ label, onClick }) {
+  return <button className="btn primary sm" onClick={onClick}><Icon name="plus" size={16} />{label}</button>;
+}
+export function Progress({ value, max, over }) {
+  const pct = max > 0 ? Math.min(100, Math.max(0, (value / max) * 100)) : 0;
+  return <div className={`bar ${over ? 'over' : ''}`} role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${pct}%` }} /></div>;
+}
+// Amount of a bill in the main currency, for totals that mix accounts in different currencies.
+export function useBase() {
+  const { records, settings } = useStore();
+  return (b) => billBase(b, records, settings.currency);
 }
 
 // Period helpers: unit = 'week' | 'month' | 'year'
@@ -127,13 +241,13 @@ export function periodLabel(unit, anchor, t) {
   return `${t.months[s.getMonth()]} ${s.getFullYear()}`;
 }
 
-export function PeriodNav({ unit, anchor, setAnchor, light }) {
+export function PeriodNav({ unit, anchor, setAnchor }) {
   const t = useT();
   return (
-    <div className={`period ${light ? 'light' : ''}`}>
-      <button className="icon-btn" aria-label="Sebelumnya" onClick={() => setAnchor(shiftPeriod(unit, anchor, -1))}><Icon name="chevL" /></button>
+    <div className="period">
+      <button className="icon-btn" aria-label={t.prev} onClick={() => setAnchor(shiftPeriod(unit, anchor, -1))}><Icon name="chevL" /></button>
       <span className="period-label">{periodLabel(unit, anchor, t)}</span>
-      <button className="icon-btn" aria-label="Berikutnya" onClick={() => setAnchor(shiftPeriod(unit, anchor, 1))}><Icon name="chevR" /></button>
+      <button className="icon-btn" aria-label={t.next} onClick={() => setAnchor(shiftPeriod(unit, anchor, 1))}><Icon name="chevR" /></button>
     </div>
   );
 }
@@ -167,4 +281,3 @@ export function IconPicker({ icon, color, onIcon, onColor }) {
   );
 }
 
-export function confirmAsk(msg) { return window.confirm(msg); }

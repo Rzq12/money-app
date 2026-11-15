@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { store, useStore, live, nameOf, uid } from './store.js';
 import { useT, CatIcon, Icon, Sheet, Segmented, confirmAsk } from './ui.jsx';
+import { matchRule, parseQuick, compressImage, putPhoto, getPhoto, delPhoto } from './logic.js';
 
 function evalExpr(s) {
   const parts = s.match(/[+-]?[0-9.]+/g);
@@ -11,6 +12,7 @@ const toLocalInput = (ms) => {
   const d = new Date(ms); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().slice(0, 16);
 };
+const Speech = typeof window !== 'undefined' ? window.SpeechRecognition || window.webkitSpeechRecognition : null;
 
 export default function BillEditor({ bill, onClose, defaultTime }) {
   const t = useT();
@@ -19,18 +21,27 @@ export default function BillEditor({ bill, onClose, defaultTime }) {
   const accounts = live(records, 'account').filter((a) => !a.archived);
   const members = live(records, 'member');
   const [type, setType] = useState(bill?.type || 'expense');
-  const cats = useMemo(() => live(records, 'category').filter((c) => c.type === (type === 'income' ? 'income' : 'expense')), [records, type]);
+  const catType = type === 'income' ? 'income' : 'expense';
+  const cats = useMemo(() => live(records, 'category').filter((c) => c.type === catType), [records, catType]);
   const [categoryId, setCategoryId] = useState(bill?.categoryId || null);
+  const [manual, setManual] = useState(!!bill?.categoryId); // the user picked the category, so rules stop overriding it
   const [expr, setExpr] = useState(bill ? String(bill.amount) : '');
   const [note, setNote] = useState(bill?.note || '');
+  const [tags, setTags] = useState((bill?.tags || []).join(' '));
   const [time, setTime] = useState(bill?.time || defaultTime || Date.now());
   const [accountId, setAccountId] = useState(bill?.accountId || settings.lastAccountId || accounts[0]?.id);
   const [toAccountId, setToAccountId] = useState(bill?.toAccountId || accounts.find((a) => a.id !== accountId)?.id);
   const [memberId, setMemberId] = useState(bill?.memberId || 'mem-me');
+  const [photo, setPhoto] = useState(null); const [photoDirty, setPhotoDirty] = useState(false);
+  const [listening, setListening] = useState(false);
   const [err, setErr] = useState('');
   const [picker, setPicker] = useState(null); // 'account' | 'to' | 'member'
+  const fileRef = useRef(null); const rec = useRef(null);
 
-  const cat = records[categoryId] && records[categoryId].type === (type === 'income' ? 'income' : 'expense') ? records[categoryId] : null;
+  useEffect(() => { if (bill?.hasPhoto) getPhoto(bill.id).then((u) => u && setPhoto(u)).catch(() => {}); }, [bill]);
+  useEffect(() => () => rec.current?.abort?.(), []);
+
+  const cat = records[categoryId] && records[categoryId].type === catType ? records[categoryId] : null;
   const amount = evalExpr(expr);
   const hasOp = /[0-9.][+-]/.test(expr);
 
@@ -50,41 +61,72 @@ export default function BillEditor({ bill, onClose, defaultTime }) {
       return last === '0' ? e.slice(0, -1) + k : e + k;
     });
   }
+  // Auto-category rules: a keyword in the note picks the category until the user picks one by hand.
+  function changeNote(v) {
+    setNote(v);
+    if (manual || type === 'transfer') return;
+    const c = matchRule(v, records, catType);
+    if (c) setCategoryId(c.id);
+  }
+  async function onPhoto(e) {
+    const f = e.target.files?.[0]; e.target.value = '';
+    if (!f) return;
+    try { setPhoto(await compressImage(f)); setPhotoDirty(true); } catch { setErr(t.photoErr); }
+  }
+  function listen() {
+    if (listening) return rec.current?.stop();
+    const r = new Speech(); rec.current = r;
+    r.lang = lang === 'id' ? 'id-ID' : 'en-US'; r.interimResults = false;
+    r.onresult = (e) => {
+      const said = e.results[0][0].transcript;
+      const p = parseQuick(said, records);
+      if (!p) { setNote(said); return setErr(t.voiceNoAmount); }
+      setErr(''); setType(p.type); setExpr(String(p.amount)); setNote(p.note);
+      if (p.category) { setCategoryId(p.category.id); setManual(p.how !== 'fallback'); }
+    };
+    r.onerror = (e) => setErr(e.error === 'not-allowed' ? t.voiceDenied : t.voiceErr);
+    r.onend = () => setListening(false);
+    setErr(''); setListening(true); r.start();
+  }
 
   function save() {
     if (hasOp) { setExpr(String(amount)); return; }
     if (!(amount > 0)) return setErr(t.enterAmount);
     if (type !== 'transfer' && !cat) return setErr(t.pickCategory);
     if (type === 'transfer' && accountId === toAccountId) return setErr(t.sameAccount);
+    const id = bill?.id || uid();
     store.put({
-      id: bill?.id || uid(), kind: 'bill', type, amount, note: note.trim(), time,
+      id, kind: 'bill', type, amount, note: note.trim(), time,
       bookId: bill?.bookId || settings.bookId, accountId,
       toAccountId: type === 'transfer' ? toAccountId : null,
       categoryId: type === 'transfer' ? null : cat.id, memberId,
+      tags: [...new Set(tags.split(/[,\s#]+/).filter(Boolean))].slice(0, 6), hasPhoto: !!photo,
       createdAt: bill?.createdAt || Date.now(),
     });
+    if (photoDirty) (photo ? putPhoto(id, photo) : delPhoto(id)).catch(() => {});
     store.setSettings({ lastAccountId: accountId });
     onClose();
   }
 
-  function del() {
-    if (confirmAsk(t.deleteBillQ)) { store.remove(bill.id); onClose(); }
+  async function del() {
+    if (!(await confirmAsk(t.deleteBillQ, { danger: true, okLabel: t.delete }))) return;
+    store.remove(bill.id); delPhoto(bill.id).catch(() => {}); onClose();
   }
 
   const acc = records[accountId]; const toAcc = records[toAccountId]; const mem = records[memberId];
   const keys = ['7', '8', '9', 'date', '4', '5', '6', '+', '1', '2', '3', '-', '.', '0', 'del', 'ok'];
 
   return (
-    <Sheet open onClose={onClose} full title={bill ? t.edit : t.add}
+    <Sheet open onClose={onClose} full title={bill ? t.edit : t.record}
       actions={bill && <button className="text-btn danger" onClick={del}>{t.delete}</button>}>
       <div className="editor">
-        <Segmented value={type} onChange={(v) => { setType(v); setErr(''); }}
+        <Segmented label={t.type} value={type} onChange={(v) => { setType(v); setErr(''); }}
           options={[{ value: 'expense', label: t.expShort }, { value: 'income', label: t.incShort }, { value: 'transfer', label: t.transfer }]} />
 
         {type !== 'transfer' ? (
-          <div className="cat-grid">
+          <div className="cat-grid" role="radiogroup" aria-label={t.category}>
             {cats.map((c) => (
-              <button key={c.id} className={`cat-cell ${cat?.id === c.id ? 'on' : ''}`} onClick={() => { setCategoryId(c.id); setErr(''); }}>
+              <button key={c.id} role="radio" aria-checked={cat?.id === c.id} className={`cat-cell ${cat?.id === c.id ? 'on' : ''}`} onClick={() => { setCategoryId(c.id); setManual(true); setErr(''); }}>
                 <CatIcon icon={c.icon} color={c.color} size={46} />
                 <span>{nameOf(c, lang)}</span>
               </button>
@@ -95,7 +137,7 @@ export default function BillEditor({ bill, onClose, defaultTime }) {
             <button className="transfer-acc" onClick={() => setPicker('account')}>
               <small>{t.from}</small><CatIcon icon={acc?.icon} color={acc?.color} size={36} /><b>{nameOf(acc, lang)}</b>
             </button>
-            <button className="swap" aria-label="swap" onClick={() => { setAccountId(toAccountId); setToAccountId(accountId); }}><Icon name="swap" size={18} /></button>
+            <button className="swap" aria-label={t.swapAcc} onClick={() => { setAccountId(toAccountId); setToAccountId(accountId); }}><Icon name="swap" size={18} /></button>
             <button className="transfer-acc" onClick={() => setPicker('to')}>
               <small>{t.to}</small><CatIcon icon={toAcc?.icon} color={toAcc?.color} size={36} /><b>{nameOf(toAcc, lang)}</b>
             </button>
@@ -105,22 +147,33 @@ export default function BillEditor({ bill, onClose, defaultTime }) {
         <div className="pad">
           <div className="amount-row">
             {type !== 'transfer' && cat ? <CatIcon icon={cat.icon} color={cat.color} size={34} /> : <span className="caticon ph">{type === 'transfer' ? <Icon name="swap" size={16} /> : '?'}</span>}
-            <input className="note-in" placeholder={t.notePh} value={note} onChange={(e) => setNote(e.target.value)} maxLength={120} />
+            <input className="note-in" placeholder={t.notePh} aria-label={t.note} value={note} onChange={(e) => changeNote(e.target.value)} maxLength={120} />
             <span className={`amount ${type}`} aria-live="polite">{expr || '0'}</span>
           </div>
-          {err && <div className="err">{err}</div>}
+          {err && <div className="err" role="alert">{err}</div>}
+          {photo && (
+            <div className="photo">
+              <a href={photo} target="_blank" rel="noreferrer"><img src={photo} alt={t.receipt} /></a>
+              <span className="hint grow">{t.photoLocal}</span>
+              <button className="text-btn danger" onClick={() => { setPhoto(null); setPhotoDirty(true); }}>{t.delete}</button>
+            </div>
+          )}
           <div className="chips">
             <label className="chip">
               <Icon name="calendar" size={14} /><input type="datetime-local" aria-label={t.date} value={toLocalInput(time)} onChange={(e) => e.target.value && setTime(new Date(e.target.value).getTime())} />
             </label>
             {type !== 'transfer' && <button className="chip" onClick={() => setPicker('account')}>{acc?.icon} {nameOf(acc, lang)}</button>}
             <button className="chip" onClick={() => setPicker('member')}>{mem?.icon} {nameOf(mem, lang)}</button>
+            <label className="chip"><Icon name="tag" size={14} /><input className="tag-in" value={tags} placeholder={t.tagsPh} aria-label={t.tags} maxLength={60} onChange={(e) => setTags(e.target.value)} /></label>
+            <button className="chip" onClick={() => fileRef.current?.click()}><Icon name="camera" size={14} />{photo ? t.photoChange : t.photoAdd}</button>
+            {Speech && <button className={`chip ${listening ? 'on' : ''}`} aria-pressed={listening} onClick={listen}><Icon name="mic" size={14} />{listening ? t.voiceStop : t.voice}</button>}
+            <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPhoto} />
           </div>
           <div className="keys">
             {keys.map((k) => {
               if (k === 'date') return <button key={k} className="key fn" onClick={() => setTime(Date.now())}>{t.today}</button>;
               if (k === 'ok') return <button key={k} className="key ok" onClick={save}>{hasOp ? '=' : t.done}</button>;
-              if (k === 'del') return <button key={k} className="key fn" aria-label="hapus" onClick={() => press('del')}><Icon name="backspace" /></button>;
+              if (k === 'del') return <button key={k} className="key fn" aria-label={t.backspace} onClick={() => press('del')}><Icon name="backspace" /></button>;
               return <button key={k} className={`key ${k === '+' || k === '-' ? 'fn' : ''}`} onClick={() => press(k)}>{k}</button>;
             })}
           </div>
@@ -134,7 +187,7 @@ export default function BillEditor({ bill, onClose, defaultTime }) {
               if (picker === 'member') setMemberId(x.id); else if (picker === 'to') setToAccountId(x.id); else setAccountId(x.id);
               setPicker(null);
             }}>
-              <CatIcon icon={x.icon} color={x.color || '#ff0080'} size={34} /><span className="grow">{nameOf(x, lang)}</span>
+              <CatIcon icon={x.icon} color={x.color} size={34} /><span className="grow">{nameOf(x, lang)}</span>
               {((picker === 'member' && x.id === memberId) || (picker === 'to' && x.id === toAccountId) || (picker === 'account' && x.id === accountId)) && <span className="check"><Icon name="check" size={18} /></span>}
             </button>
           ))}

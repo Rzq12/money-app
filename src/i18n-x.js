@@ -1,0 +1,167 @@
+// Labels for the feature pages (budgets, goals, debts, recurring, rules, portfolio, split bill,
+// chat, calculators, import, backup, currencies, receipt photo, voice, tags).
+export const idX = {
+  record: 'Catat', back: 'Kembali', prev: 'Sebelumnya', next: 'Berikutnya', nav: 'Navigasi', yes: 'Ya', ok: 'OK', swapAcc: 'Tukar akun', backspace: 'Hapus digit',
+  signedIn: 'Berhasil masuk.', amount: 'Jumlah', type: 'Jenis', period: 'Periode', view: 'Tampilan', until: 'Sampai', subtotal: 'Subtotal',
+  needName: 'Isi nama dulu.', badRange: 'Tanggal akhir harus setelah tanggal mulai.',
+  noBillAcc: 'Belum ada transaksi di akun ini.', noBillDay: 'Belum ada transaksi di tanggal ini.',
+  noData: 'Belum ada {kind} di periode ini.', noDataHint: 'Catat transaksi atau pindah periode untuk melihat laporan.',
+  share: 'Porsi', groupBy: 'Kelompokkan', general: 'Umum', rates: 'Mata uang', display: 'Tampilan',
+  goals: 'Tujuan', portfolio: 'Portofolio', debts: 'Hutang piutang', recurring: 'Berulang', rules: 'Aturan otomatis', split: 'Split bill',
+  chat: 'Chat pencatat', import: 'Impor', kpr: 'Kalkulator KPR', pph: 'Kalkulator PPh 21',
+  periods: { week: 'Mingguan', month: 'Bulanan', year: 'Tahunan', custom: 'Khusus' },
+  freqs: { daily: 'Harian', weekly: 'Mingguan', monthly: 'Bulanan' },
+
+  budgetSub: 'Batas pengeluaran per kategori, dengan periode yang bisa diatur.', budgetEmpty: 'Belum ada anggaran.',
+  budgetEmptyHint: 'Tekan Tambah untuk membuat batas pengeluaran pertama.', budgetNew: 'Anggaran baru', budgetEdit: 'Ubah anggaran',
+  budgetAmount: 'Batas pengeluaran', allCategories: 'Semua kategori',
+
+  goalsSub: 'Setoran ke tujuan adalah transfer nyata antar dompet.', goalNew: 'Tujuan baru', goalEdit: 'Ubah tujuan', goalName: 'Nama tujuan',
+  goalTarget: 'Target', goalAccount: 'Dompet tabungan', goalAccountHint: 'Setoran masuk ke dompet ini.', goalDue: 'Tenggat', goalDeposit: 'Setor',
+  goalDepositIntro: 'Uang dipindahkan ke {acc} dan tercatat sebagai transfer.', goalNeedSource: 'Butuh dompet lain sebagai sumber setoran.',
+  goalEmpty: 'Belum ada tujuan.', goalEmptyHint: 'Tekan Tambah, lalu setor dari dompet mana pun.', goalReached: 'Tercapai', goalLeft: 'Kurang',
+
+  debtsSub: 'Catat siapa berhutang kepada siapa, dan cicilannya.', debtNew: 'Catatan baru', debtEdit: 'Ubah catatan', debtOwe: 'Saya berhutang',
+  debtLent: 'Saya meminjamkan', debtPerson: 'Nama orang', debtPay: 'Catat pembayaran', debtPayAll: 'Tandai lunas',
+  debtEmpty: 'Belum ada hutang atau piutang.', debtEmptyHint: 'Tekan Tambah untuk mencatat yang pertama.', debtOweSum: 'Sisa hutang saya',
+  debtLentSum: 'Sisa piutang saya', paidOff: 'Lunas',
+
+  recSub: 'Transaksi yang dibuat otomatis saat jatuh tempo.', recNew: 'Jadwal baru', recEdit: 'Ubah jadwal', recFreq: 'Pengulangan', recNext: 'Berikutnya',
+  recStart: 'Mulai tanggal', recStartHint: 'Jika tanggalnya sudah lewat, transaksi yang tertinggal langsung dibuat.',
+  recEmpty: 'Belum ada transaksi berulang.', recEmptyHint: 'Cocok untuk gaji, sewa, atau langganan.', recPaused: 'Dijeda', recActive: 'Aktif',
+
+  rulesSub: 'Kata kunci di catatan memilih kategori secara otomatis: di form Catat, chat, dan impor.', ruleNew: 'Aturan baru', ruleEdit: 'Ubah aturan',
+  ruleKeyword: 'Kata kunci', ruleKeywordHint: 'Contoh: gojek, indomaret, pln', ruleNeedKeyword: 'Kata kunci minimal 2 huruf.',
+  ruleEmpty: 'Belum ada aturan.', ruleEmptyHint: 'Contoh: kata gojek selalu masuk Transportasi.', ruleNoCat: 'Kategori sudah dihapus',
+
+  pfSub: 'Harga diisi manual; tidak ada data harga otomatis.', pfNew: 'Aset baru', pfEdit: 'Ubah aset',
+  pfKinds: { saham: 'Saham', reksadana: 'Reksadana', emas: 'Emas' }, pfName: 'Nama',
+  pfNameHint: { saham: 'Contoh: BBCA', reksadana: 'Nama produk reksadana', emas: 'Contoh: Emas Antam' },
+  pfUnits: { saham: 'Jumlah lembar', reksadana: 'Jumlah unit', emas: 'Berat (gram)' },
+  pfBuy: 'Harga beli rata-rata per unit', pfPrice: 'Harga sekarang per unit', pfPriceHint: 'Perbarui sendiri saat harga berubah.',
+  pfNeedNumbers: 'Isi jumlah dan harga beli.', pfEmpty: 'Belum ada aset.', pfEmptyHint: 'Tekan Tambah untuk mencatat saham, reksadana, atau emas.',
+  pfValue: 'Nilai sekarang', pfCost: 'Modal', pfPl: 'Untung/rugi',
+
+  splitSub: 'Bagi tagihan per item, dengan pajak dan service.', splitNew: 'Split baru', splitEdit: 'Ubah split', splitMe: 'Saya', splitTitle: 'Nama tagihan',
+  splitPeople: 'Orang', splitPersonPh: 'Nama', splitItems: 'Item', splitWho: 'Yang ikut', splitItemPh: 'Nama item', splitPricePh: 'Harga',
+  splitWhoHint: 'Ketuk nama untuk memilih siapa yang ikut tiap item. Tanpa pilihan berarti dibagi rata.', splitService: 'Service %', splitTax: 'Pajak %',
+  splitPaidHint: 'Nyalakan sakelar untuk yang sudah lunas.', splitNeedItem: 'Tambah minimal satu item.', splitEmpty: 'Belum ada split bill.',
+  splitEmptyHint: 'Tekan Tambah untuk membagi tagihan pertama.',
+
+  chatSub: 'Ketik seperti pesan biasa. Dibaca dengan aturan kata kunci, bukan AI.', chatClear: 'Bersihkan',
+  chatHello: 'Tulis transaksi, misalnya: makan siang 25rb, atau: gaji masuk 5jt.',
+  chatNoAmount: 'Saya tidak menemukan jumlahnya. Coba tulis angka, misalnya: kopi 18rb.', chatUndone: 'Transaksi ini sudah dibatalkan.',
+  chatSaved: 'Tercatat:', chatUndo: 'Batalkan', chatPh: 'makan siang 25rb', chatSend: 'Kirim',
+
+  kprSub: 'Simulasi cicilan dengan bunga tetap.', kprPrice: 'Harga rumah', kprDp: 'Uang muka %', kprRate: 'Bunga % per tahun', kprYears: 'Tenor (tahun)',
+  kprPay: 'Cicilan per bulan', kprLoan: 'Pokok pinjaman', kprDpAmt: 'Uang muka', kprInterest: 'Total bunga', kprTotal: 'Total dibayar',
+  kprNote: 'Bunga dianggap tetap sepanjang tenor. KPR bank biasanya tetap beberapa tahun lalu mengambang.', kprSchedule: 'Rincian 12 bulan pertama',
+  kprPrin: 'Pokok', kprInt: 'Bunga', kprBal: 'Sisa',
+
+  pphSub: 'Perkiraan PPh 21 setahun untuk pegawai tetap.', pphGross: 'Gaji bruto per bulan', pphBonus: 'Bonus/THR setahun',
+  pphPension: 'Iuran pensiun per bulan', pphStatus: 'Status', pphSingle: 'Belum kawin', pphMarried: 'Kawin', pphDeps: 'Tanggungan',
+  pphMonthly: 'Pajak rata-rata per bulan', pphTakeHome: 'Gaji bersih per bulan', pphYearly: 'Pajak setahun', pphAnnual: 'Bruto setahun', pphJabatan: 'Biaya jabatan',
+  pphNote: 'Dihitung dengan tarif Pasal 17 atas penghasilan setahun. Potongan bulanan Januari sampai November memakai tarif TER sehingga bisa berbeda; selisihnya diperhitungkan di Desember.',
+
+  impSub: 'Dari file CSV/XLSX atau teks notifikasi bank dan e-wallet.',
+  impFileHint: 'File perlu kolom tanggal dan jumlah. Ekspor CSV dari app ini juga bisa dibaca.', impPick: 'Pilih file',
+  impPaste: 'Tempel teks notifikasi atau email', impPastePh: 'Pembayaran Rp 25.000 ke KOPI KENANGAN pada 14/11/2026', impRead: 'Baca teks',
+  impPreview: 'Periksa sebelum impor', impDup: 'mungkin ganda', impFound: '{n} transaksi terbaca, {s} baris dilewati.',
+  impNoText: 'Tidak ada jumlah (Rp ...) yang terbaca dari teks.', impNoRows: 'Tidak ada baris dengan tanggal dan jumlah yang terbaca.',
+  impXls: 'Format .xls lama belum didukung. Simpan sebagai .xlsx atau .csv.', impBadFile: 'File tidak bisa dibaca.',
+  impDo: 'Impor {n} transaksi', impDone: '{n} transaksi diimpor.', dupTitle: 'Transaksi ganda', dupNone: 'Tidak ada transaksi ganda.',
+  dupClean: 'Hapus {n} salinan', dupAsk: 'Hapus {n} salinan dan sisakan satu?',
+
+  backupSub: 'Simpan salinan data atau pindahkan ke perangkat lain.', exportBackupHint: 'File JSON berisi semua data.',
+  importBackupHint: 'Digabung dengan data sekarang.', exportCsvHint: 'Untuk dibuka di spreadsheet.', restoreDone: 'Cadangan dipulihkan.',
+
+  baseCurrency: 'Mata uang utama', ratesHint: 'Total dihitung dalam {base}. Isi kurs untuk dompet bermata uang lain.', ratesTitle: 'Kurs manual',
+  ratesEmpty: 'Semua dompet memakai mata uang utama.', rateMissing: 'kurs belum diisi', rateAdd: 'Tambah mata uang',
+
+  tags: 'Tag', tagsPh: 'tag', photoAdd: 'Foto struk', photoChange: 'Ganti foto', photoLocal: 'Foto dikompres dan hanya tersimpan di perangkat ini.',
+  photoErr: 'Foto tidak bisa dibaca.', receipt: 'Foto struk', voice: 'Suara', voiceStop: 'Berhenti',
+  voiceNoAmount: 'Jumlah tidak terdengar. Sebutkan angkanya, misalnya: kopi delapan belas ribu.', voiceDenied: 'Izin mikrofon ditolak.',
+  voiceErr: 'Suara tidak terbaca. Coba lagi.',
+};
+
+export const enX = {
+  record: 'Record', back: 'Back', prev: 'Previous', next: 'Next', nav: 'Navigation', yes: 'Yes', swapAcc: 'Swap accounts', backspace: 'Delete digit',
+  signedIn: 'Signed in.', amount: 'Amount', type: 'Type', period: 'Period', view: 'View', until: 'Until',
+  needName: 'Enter a name first.', badRange: 'The end date must come after the start date.',
+  noBillAcc: 'No transactions in this account yet.', noBillDay: 'No transactions on this date.',
+  noData: 'No {kind} in this period.', noDataHint: 'Record a transaction or change the period to see the report.',
+  share: 'Share', groupBy: 'Group by', general: 'General', rates: 'Currencies', display: 'Display',
+  goals: 'Goals', portfolio: 'Portfolio', debts: 'Debts', recurring: 'Recurring', rules: 'Auto rules', chat: 'Chat logger', import: 'Import',
+  kpr: 'Mortgage calculator', pph: 'Income tax (PPh 21)',
+  periods: { week: 'Weekly', month: 'Monthly', year: 'Yearly', custom: 'Custom' },
+  freqs: { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly' },
+
+  budgetSub: 'Spending limits per category, over a period you choose.', budgetEmpty: 'No budgets yet.',
+  budgetEmptyHint: 'Press Add to set your first spending limit.', budgetNew: 'New budget', budgetEdit: 'Edit budget', budgetAmount: 'Spending limit',
+  allCategories: 'All categories',
+
+  goalsSub: 'A deposit into a goal is a real transfer between wallets.', goalNew: 'New goal', goalEdit: 'Edit goal', goalName: 'Goal name', goalTarget: 'Target',
+  goalAccount: 'Savings wallet', goalAccountHint: 'Deposits go into this wallet.', goalDue: 'Due', goalDeposit: 'Deposit',
+  goalDepositIntro: 'The money moves to {acc} and is recorded as a transfer.', goalNeedSource: 'You need another wallet to deposit from.',
+  goalEmpty: 'No goals yet.', goalEmptyHint: 'Press Add, then deposit from any wallet.', goalReached: 'Reached', goalLeft: 'To go',
+
+  debtsSub: 'Track who owes whom, and the repayments.', debtNew: 'New entry', debtEdit: 'Edit entry', debtOwe: 'I owe', debtLent: 'I lent',
+  debtPerson: 'Person', debtPay: 'Record payment', debtPayAll: 'Mark as paid', debtEmpty: 'No debts or loans yet.',
+  debtEmptyHint: 'Press Add to record the first one.', debtOweSum: 'I still owe', debtLentSum: 'Still owed to me', paidOff: 'Paid',
+
+  recSub: 'Transactions created automatically when they fall due.', recNew: 'New schedule', recEdit: 'Edit schedule', recFreq: 'Repeats', recNext: 'Next',
+  recStart: 'Start date', recStartHint: 'If the date has passed, the missed transactions are created right away.',
+  recEmpty: 'No recurring transactions yet.', recEmptyHint: 'Good for salary, rent or subscriptions.', recPaused: 'Paused', recActive: 'Active',
+
+  rulesSub: 'A keyword in the note picks the category automatically: in the record form, chat and import.', ruleNew: 'New rule', ruleEdit: 'Edit rule',
+  ruleKeyword: 'Keyword', ruleKeywordHint: 'For example: gojek, indomaret, pln', ruleNeedKeyword: 'The keyword needs at least 2 letters.',
+  ruleEmpty: 'No rules yet.', ruleEmptyHint: 'For example: the word gojek always goes to Transport.', ruleNoCat: 'Category was deleted',
+
+  pfSub: 'Prices are entered by hand; there is no live price feed.', pfNew: 'New asset', pfEdit: 'Edit asset',
+  pfKinds: { saham: 'Stocks', reksadana: 'Mutual funds', emas: 'Gold' }, pfName: 'Name',
+  pfNameHint: { saham: 'For example: BBCA', reksadana: 'Fund name', emas: 'For example: Antam gold' },
+  pfUnits: { saham: 'Shares', reksadana: 'Units', emas: 'Weight (grams)' },
+  pfBuy: 'Average buy price per unit', pfPrice: 'Current price per unit', pfPriceHint: 'Update it yourself when the price changes.',
+  pfNeedNumbers: 'Enter the quantity and the buy price.', pfEmpty: 'No assets yet.', pfEmptyHint: 'Press Add to record stocks, funds or gold.',
+  pfValue: 'Current value', pfCost: 'Cost', pfPl: 'Gain/loss',
+
+  splitSub: 'Split a bill by item, with tax and service.', splitNew: 'New split', splitEdit: 'Edit split', splitMe: 'Me', splitTitle: 'Bill name',
+  splitPeople: 'People', splitPersonPh: 'Name', splitItems: 'Items', splitWho: 'Shared by', splitItemPh: 'Item name', splitPricePh: 'Price',
+  splitWhoHint: 'Tap names to choose who shares each item. With none chosen it is split evenly.', splitService: 'Service %', splitTax: 'Tax %',
+  splitPaidHint: 'Switch on for everyone who has paid.', splitNeedItem: 'Add at least one item.', splitEmpty: 'No split bills yet.',
+  splitEmptyHint: 'Press Add to split your first bill.',
+
+  chatSub: 'Type as you would a message. Read with keyword rules, not AI.', chatClear: 'Clear',
+  chatHello: 'Write a transaction, for example: lunch 25k, or: salary in 5jt.',
+  chatNoAmount: 'I could not find the amount. Try a number, for example: coffee 18k.', chatUndone: 'This transaction was undone.',
+  chatSaved: 'Recorded:', chatUndo: 'Undo', chatPh: 'lunch 25k', chatSend: 'Send',
+
+  kprSub: 'Instalment simulation at a fixed rate.', kprPrice: 'House price', kprDp: 'Down payment %', kprRate: 'Interest % per year', kprYears: 'Term (years)',
+  kprPay: 'Monthly instalment', kprLoan: 'Loan principal', kprDpAmt: 'Down payment', kprInterest: 'Total interest', kprTotal: 'Total paid',
+  kprNote: 'The rate is assumed fixed for the whole term. Bank mortgages are usually fixed for a few years and then floating.',
+  kprSchedule: 'First 12 months', kprPrin: 'Principal', kprInt: 'Interest', kprBal: 'Balance',
+
+  pphSub: 'Estimated yearly PPh 21 for a permanent employee.', pphGross: 'Gross salary per month', pphBonus: 'Bonus/THR per year',
+  pphPension: 'Pension contribution per month', pphStatus: 'Status', pphSingle: 'Single', pphMarried: 'Married', pphDeps: 'Dependants',
+  pphMonthly: 'Average tax per month', pphTakeHome: 'Net salary per month', pphYearly: 'Tax per year', pphAnnual: 'Gross per year', pphJabatan: 'Occupational expense',
+  pphNote: 'Calculated with the Article 17 rates on yearly income. Monthly withholding from January to November uses the TER rates and can differ; the difference is settled in December.',
+
+  impSub: 'From a CSV/XLSX file or bank and e-wallet notification text.',
+  impFileHint: 'The file needs a date column and an amount column. The CSV exported by this app can be read too.', impPick: 'Choose file',
+  impPaste: 'Paste notification or e-mail text', impRead: 'Read text', impPreview: 'Check before importing', impDup: 'possible duplicate',
+  impFound: '{n} transactions read, {s} rows skipped.', impNoText: 'No amount (Rp ...) could be read from the text.',
+  impNoRows: 'No rows with a date and an amount could be read.', impXls: 'The old .xls format is not supported. Save as .xlsx or .csv.',
+  impBadFile: 'The file could not be read.', impDo: 'Import {n} transactions', impDone: '{n} transactions imported.', dupTitle: 'Duplicate transactions',
+  dupNone: 'No duplicate transactions.', dupClean: 'Delete {n} copies', dupAsk: 'Delete {n} copies and keep one?',
+
+  backupSub: 'Keep a copy of your data or move it to another device.', exportBackupHint: 'A JSON file with all your data.',
+  importBackupHint: 'Merged with the current data.', exportCsvHint: 'To open in a spreadsheet.', restoreDone: 'Backup restored.',
+
+  baseCurrency: 'Main currency', ratesHint: 'Totals are calculated in {base}. Enter a rate for wallets in other currencies.', ratesTitle: 'Manual rates',
+  ratesEmpty: 'Every wallet uses the main currency.', rateMissing: 'rate not set', rateAdd: 'Add currency',
+
+  tags: 'Tags', photoAdd: 'Receipt photo', photoChange: 'Change photo', photoLocal: 'The photo is compressed and kept on this device only.',
+  photoErr: 'The photo could not be read.', receipt: 'Receipt photo', voice: 'Voice', voiceStop: 'Stop',
+  voiceNoAmount: 'No amount was heard. Say the number, for example: coffee eighteen thousand.', voiceDenied: 'Microphone permission was denied.',
+  voiceErr: 'The speech could not be read. Try again.',
+};

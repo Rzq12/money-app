@@ -25,18 +25,18 @@ export function defaultRecords() {
     cat('cat-daily', 'expense', '🧴', '#00dfd8', 'Harian', 'Daily', 1),
     cat('cat-traffic', 'expense', '🚌', '#29bc9b', 'Transportasi', 'Transport', 2),
     cat('cat-social', 'expense', '🍻', '#7928ca', 'Sosial', 'Social', 3),
-    cat('cat-home', 'expense', '🏠', '#0761d1', 'Rumah', 'Housing', 4),
+    cat('cat-home', 'expense', '🏠', '#ab570a', 'Rumah', 'Housing', 4),
     cat('cat-gift', 'expense', '🎁', '#ff0080', 'Hadiah', 'Gift', 5),
     cat('cat-phone', 'expense', '📱', '#0070f3', 'Komunikasi', 'Phone', 6),
     cat('cat-dress', 'expense', '👕', '#ff4d4d', 'Pakaian', 'Clothes', 7),
     cat('cat-fun', 'expense', '🎮', '#eb367f', 'Rekreasi', 'Fun', 8),
     cat('cat-beauty', 'expense', '💄', '#4c2889', 'Kecantikan', 'Beauty', 9),
     cat('cat-medical', 'expense', '💊', '#c50000', 'Medis', 'Medical', 10),
-    cat('cat-tax', 'expense', '🧾', '#888888', 'Pajak', 'Tax', 11),
+    cat('cat-tax', 'expense', '🧾', '#a1a1a1', 'Pajak', 'Tax', 11),
     cat('cat-edu', 'expense', '📚', '#50e3c2', 'Pendidikan', 'Education', 12),
     cat('cat-baby', 'expense', '🍼', '#f9cb28', 'Bayi', 'Baby', 13),
-    cat('cat-pet', 'expense', '🐱', '#ab570a', 'Peliharaan', 'Pet', 14),
-    cat('cat-travel', 'expense', '✈️', '#007cf0', 'Bepergian', 'Travel', 15),
+    cat('cat-pet', 'expense', '🐱', '#888888', 'Peliharaan', 'Pet', 14),
+    cat('cat-travel', 'expense', '✈️', '#0761d1', 'Bepergian', 'Travel', 15),
     cat('cat-wage', 'income', '💰', '#f5a623', 'Gaji', 'Salary', 0),
     cat('cat-bonus', 'income', '🏅', '#7928ca', 'Bonus', 'Bonus', 1),
     cat('cat-invest', 'income', '📈', '#29bc9b', 'Investasi', 'Investment', 2),
@@ -46,11 +46,12 @@ export function defaultRecords() {
   return Object.fromEntries(r.map((x) => [x.id, x]));
 }
 
-// Accent choices: ink (the design system's primary) first, then its own palette.
-export const ACCENTS = ['#171717', '#0070f3', '#7928ca', '#ff0080', '#ff4d4d', '#f5a623', '#29bc9b'];
+// Accent choices for the one accented control (the Catat button, today's marker, the logo's plus).
+// Kasku's own pink comes first; everything else in the interface stays ink.
+export const ACCENTS = ['#f06292', '#0070f3', '#7928ca', '#ff4d4d', '#f5a623', '#29bc9b', '#171717'];
 
 const defaultSettings = {
-  lang: 'id', theme: ACCENTS[0], dark: false, currency: 'IDR', bookId: 'book-default',
+  lang: 'id', theme: ACCENTS[0], themeV: 2, dark: false, currency: 'IDR', bookId: 'book-default',
   lastAccountId: 'acc-cash',
 };
 
@@ -60,10 +61,10 @@ function load(key, fallback) {
 
 let state = {
   records: { ...defaultRecords(), ...load(REC_KEY, {}) },
-  settings: { ...defaultSettings, ...load(SET_KEY, {}) },
+  settings: { ...defaultSettings, themeV: 1, ...load(SET_KEY, {}) },
 };
-// A theme saved before the redesign (the old pink set) falls back to ink.
-if (!ACCENTS.includes(state.settings.theme)) state.settings.theme = ACCENTS[0];
+// Themes saved before the accent became its own setting reset to the default accent once.
+if (state.settings.themeV !== 2 || !ACCENTS.includes(state.settings.theme)) state.settings = { ...state.settings, theme: ACCENTS[0], themeV: 2 };
 let dirty = new Set(load(DIRTY_KEY, []));
 const listeners = new Set();
 const changeHooks = new Set();
@@ -108,6 +109,13 @@ export const store = {
     if (changed) { state = { ...state, records: recs }; persist(); emit(); }
     return changed;
   },
+  // Several records in one notification (imports, clean-ups).
+  putMany(recs) {
+    const next = { ...state.records }; const now = Date.now();
+    for (const rec of recs) { next[rec.id] = { ...next[rec.id], ...rec, updatedAt: now }; dirty.add(rec.id); }
+    state = { ...state, records: next };
+    persist(); emit(); changeHooks.forEach((f) => f());
+  },
   resetAll() {
     state = { records: defaultRecords(), settings: { ...defaultSettings, lang: state.settings.lang } };
     dirty = new Set(); persist(); emit();
@@ -129,6 +137,12 @@ export const nameOf = (r, lang) => (r ? r.name || r.names?.[lang] || r.names?.id
 
 export function accountBalances(records) {
   const bal = {};
+  // Balances stay in each account's own currency; a transfer between currencies converts at the saved rates.
+  const base = state.settings.currency;
+  const rate = (accId) => {
+    const c = records[accId]?.currency; const r = records[`rate-${c}`];
+    return !c || c === base || !r || r.deleted || !(r.rate > 0) ? 1 : Number(r.rate);
+  };
   for (const a of live(records, 'account')) bal[a.id] = Number(a.initBalance) || 0;
   for (const b of live(records, 'bill')) {
     const amt = Number(b.amount) || 0;
@@ -136,7 +150,7 @@ export function accountBalances(records) {
     else if (b.type === 'income') bal[b.accountId] = (bal[b.accountId] || 0) + amt;
     else if (b.type === 'transfer') {
       bal[b.accountId] = (bal[b.accountId] || 0) - amt;
-      bal[b.toAccountId] = (bal[b.toAccountId] || 0) + amt;
+      bal[b.toAccountId] = (bal[b.toAccountId] || 0) + amt * rate(b.accountId) / rate(b.toAccountId);
     }
   }
   return bal;

@@ -1,17 +1,19 @@
 // Short UI labels in Indonesian and English.
+import { idX, enX } from './i18n-x.js';
+
 const id = {
   appName: 'Kasku+',
   tagline: 'Buku catatan keuangan sederhana',
-  ledger: 'Buku', analysis: 'Analisis', wallet: 'Dompet', more: 'Lainnya',
+  ledger: 'Buku', analysis: 'Laporan', wallet: 'Dompet', more: 'Lainnya',
   details: 'Detail', calendar: 'Kalender',
   expense: 'Pengeluaran', income: 'Pemasukan', transfer: 'Transfer', balance: 'Saldo',
   expShort: 'Keluar', incShort: 'Masuk',
   budgetLeft: 'Sisa Anggaran', budget: 'Anggaran', monthlyBudget: 'Anggaran bulanan',
-  noBill: 'Belum ada transaksi di periode ini!', addFirst: 'Ketuk + untuk mencatat transaksi pertama.',
+  noBill: 'Belum ada transaksi di periode ini.', addFirst: 'Tekan tombol Catat (+) untuk mencatat transaksi pertama.',
   search: 'Cari transaksi', searchHint: 'Nama, jumlah, catatan, akun',
-  noResult: 'Transaksi tidak ditemukan!',
+  noResult: 'Transaksi tidak ditemukan.',
   category: 'Kategori', account: 'Akun', member: 'Anggota', date: 'Tanggal', note: 'Catatan',
-  notePh: 'Tulis sesuatu!', from: 'Dari', to: 'Ke',
+  notePh: 'Catatan (opsional)', from: 'Dari', to: 'Ke',
   save: 'Simpan', cancel: 'Batal', delete: 'Hapus', close: 'Tutup', add: 'Tambah', done: 'Selesai', edit: 'Ubah',
   deleteBillQ: 'Hapus transaksi ini?', sameAccount: 'Rekening transfer tidak boleh sama',
   enterAmount: 'Masukkan jumlah', pickCategory: 'Pilih kategori',
@@ -50,15 +52,15 @@ const id = {
 const en = {
   ...id,
   tagline: 'A simple money notebook',
-  ledger: 'Ledger', analysis: 'Analysis', wallet: 'Wallet', more: 'More',
+  ledger: 'Ledger', analysis: 'Reports', wallet: 'Wallet', more: 'More',
   details: 'Details', calendar: 'Calendar',
   expense: 'Expense', income: 'Income', transfer: 'Transfer', balance: 'Balance',
   expShort: 'Out', incShort: 'In',
   budgetLeft: 'Budget Left', budget: 'Budget', monthlyBudget: 'Monthly budget',
-  noBill: 'No transactions in this period!', addFirst: 'Tap + to record your first transaction.',
-  search: 'Search transactions', searchHint: 'Name, amount, note, account', noResult: 'No transactions found!',
+  noBill: 'No transactions in this period.', addFirst: 'Press Record (+) to add your first transaction.',
+  search: 'Search transactions', searchHint: 'Name, amount, note, account', noResult: 'No transactions found.',
   category: 'Category', account: 'Account', member: 'Member', date: 'Date', note: 'Note',
-  notePh: 'Write something!', from: 'From', to: 'To',
+  notePh: 'Note (optional)', from: 'From', to: 'To',
   save: 'Save', cancel: 'Cancel', delete: 'Delete', close: 'Close', add: 'Add', done: 'Done', edit: 'Edit',
   deleteBillQ: 'Delete this transaction?', sameAccount: 'Transfer accounts must differ',
   enterAmount: 'Enter an amount', pickCategory: 'Pick a category',
@@ -92,5 +94,9 @@ const en = {
   typeDesc: { credit: 'Pay-later and similar credit too', ewallet: 'E-wallets, prepaid cards', invest: 'Investment and finance accounts', receivable: 'Money not yet received', payable: 'Money you must pay' },
   budgetSet: 'Set budget', budgetUsed: 'Used', overBudget: 'Over budget',
 };
+
+// Labels for the feature pages live in i18n-x.js. English falls back to Indonesian for any key it lacks.
+Object.assign(id, idX);
+Object.assign(en, idX, enX);
 
 export const dict = { id, en };

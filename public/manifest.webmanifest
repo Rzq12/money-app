@@ -2,7 +2,7 @@
   "name": "Kasku+ · Catatan Keuangan",
   "short_name": "Kasku+",
   "description": "Buku catatan keuangan sederhana yang sinkron antara HP dan website",
-  "start_url": "./#ledger",
+  "start_url": "./#/",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
