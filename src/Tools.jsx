@@ -2,7 +2,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { store, useStore, live, nameOf, uid, formatMoney } from './store.js';
 import { useT, useMoney, Icon, Sheet, Segmented, PageHead, Empty, AddBtn, Progress, confirmAsk } from './ui.jsx';
-import { splitTotals, kpr, pph21, parseQuick } from './logic.js';
+import { splitTotals, kpr, pph21, parseQuick, toDateInput, fromDateInput, compressImage } from './logic.js';
+import { callAI, useAi, context, aiReason } from './ai.js';
 import { num, Field, AmountInput, EditActions } from './Money.jsx';
 
 const pctText = (v) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
@@ -88,8 +89,23 @@ function SplitEditor({ item, onClose }) {
   const t = useT(); const money = useMoney();
   const [s, setS] = useState(() => item || { title: '', people: [t.splitMe], items: [], taxPct: '', servicePct: '', paid: [] });
   const [person, setPerson] = useState(''); const [iname, setIname] = useState(''); const [iprice, setIprice] = useState('');
-  const [err, setErr] = useState('');
+  const [err, setErr] = useState(''); const [reading, setReading] = useState(false);
+  const receiptRef = useRef(null);
   const set = (patch) => setS((x) => ({ ...x, ...patch }));
+  async function readReceipt(e) {
+    const f = e.target.files?.[0]; e.target.value = '';
+    if (!f) return;
+    setErr(''); setReading(true);
+    try {
+      const r = await callAI('receipt', { image: await compressImage(f), ...context() });
+      if (!r.readable || !r.items.length) { setErr(t.receiptUnreadable); return; }
+      const sub = r.items.reduce((a, it) => a + it.price, 0);
+      const service = r.service && sub ? Math.round((r.service / sub) * 1000) / 10 : null;
+      const tax = r.tax && sub ? Math.round((r.tax / (sub + (r.service || 0))) * 1000) / 10 : null;
+      setS((x) => ({ ...x, title: x.title || r.merchant || '', items: [...x.items, ...r.items.map((it) => ({ name: it.name, price: it.price, who: [] }))],
+        ...(service ? { servicePct: String(service) } : {}), ...(tax ? { taxPct: String(tax) } : {}) }));
+    } catch (er) { setErr(aiReason(t, er)); } finally { setReading(false); }
+  }
   const totals = splitTotals(s);
   const addPerson = () => { if (person.trim()) { set({ people: [...s.people, person.trim()] }); setPerson(''); } };
   const addItem = () => { if (iname.trim() && num(iprice) > 0) { set({ items: [...s.items, { name: iname.trim(), price: num(iprice), who: [] }] }); setIname(''); setIprice(''); } };
@@ -141,6 +157,8 @@ function SplitEditor({ item, onClose }) {
             <button className="btn" onClick={addItem}>{t.add}</button>
           </div>
           <small className="hint">{t.splitWhoHint}</small>
+          <div className="btn-row"><button className="btn sm" disabled={reading} onClick={() => receiptRef.current?.click()}><Icon name="receipt" size={14} />{reading ? t.receiptReading : t.receiptRead}</button></div>
+          <input ref={receiptRef} type="file" accept="image/*" hidden onChange={readReceipt} />
         </div>
 
         <div className="two">
@@ -192,52 +210,106 @@ export function Split() {
   );
 }
 
-// ---------- chat logger: keyword rules, not a language model ----------
+// ---------- chat: AI understands sentences and questions; keyword rules when AI is unavailable ----------
 const CHAT_KEY = 'kasku.v1.chat';
+const QUESTION = /\?\s*$|^(berapa|apa|kapan|mana|bagaimana|gimana|apakah|bandingkan|tampilkan|how|what|when|which|compare|show)\b/i;
+
 export function Chat({ onOpenBill }) {
   const t = useT(); const { records, settings } = useStore(); const lang = settings.lang;
+  const ai = useAi();
   const [msgs, setMsgs] = useState(() => { try { return JSON.parse(localStorage.getItem(CHAT_KEY)) || []; } catch { return []; } });
-  const [text, setText] = useState('');
+  const [text, setText] = useState(''); const [busy, setBusy] = useState(false);
   const end = useRef(null);
   useEffect(() => { localStorage.setItem(CHAT_KEY, JSON.stringify(msgs.slice(-60))); end.current?.scrollIntoView({ block: 'end' }); }, [msgs]);
-  function send(e) {
+  const add = (m) => setMsgs((list) => [...list, m]);
+  const lastAcc = () => (records[settings.lastAccountId] && !records[settings.lastAccountId].deleted ? settings.lastAccountId : live(records, 'account')[0]?.id);
+
+  const proposal = (x) => ({ ...x, id: uid(), accountId: x.accountId || lastAcc(), check: !x.accountId, state: 'open' });
+  const asBill = (p) => ({
+    id: p.id, kind: 'bill', type: p.type, amount: p.amount, note: (p.note || '').slice(0, 120), tags: p.tags || [],
+    time: p.date === toDateInput(Date.now()) ? Date.now() : fromDateInput(p.date, 12), bookId: settings.bookId, accountId: p.accountId,
+    toAccountId: p.type === 'transfer' ? p.toAccountId : null, categoryId: p.type === 'transfer' ? null : p.categoryId, memberId: 'mem-me', createdAt: Date.now(),
+  });
+  const valid = (p) => p.amount > 0 && records[p.accountId] && !records[p.accountId].deleted
+    && (p.type === 'transfer' ? records[p.toAccountId] && p.toAccountId !== p.accountId : records[p.categoryId] && !records[p.categoryId].deleted);
+  const setState = (mi, ids, state) => setMsgs((list) => list.map((m, i) => (i !== mi ? m : { ...m, proposals: m.proposals.map((p) => (ids.includes(p.id) ? { ...p, state } : p)) })));
+  const save = (mi, list) => { const ok = list.filter(valid); if (ok.length) store.putMany(ok.map(asBill)); setState(mi, ok.map((p) => p.id), 'saved'); };
+
+  async function send(e) {
     e.preventDefault();
     const said = text.trim();
-    if (!said) return;
-    setText('');
-    const p = parseQuick(said, records);
-    const acc = records[settings.lastAccountId] && !records[settings.lastAccountId].deleted ? records[settings.lastAccountId] : live(records, 'account')[0];
-    if (!p || !p.category || !acc) return setMsgs((m) => [...m, { me: said }, { bot: t.chatNoAmount }]);
-    const id = uid();
-    store.put({ id, kind: 'bill', type: p.type, amount: p.amount, note: p.note.slice(0, 120), time: Date.now(), bookId: settings.bookId, accountId: acc.id, toAccountId: null, categoryId: p.category.id, memberId: 'mem-me', createdAt: Date.now() });
-    setMsgs((m) => [...m, { me: said }, { billId: id }]);
+    if (!said || busy) return;
+    setText(''); add({ me: said }); setBusy(true);
+    const isQuestion = QUESTION.test(said);
+    try {
+      if (isQuestion) {
+        const r = await callAI('ask', { text: said, lang, today: toDateInput(Date.now()) });
+        add(r.unsupported ? { bot: t.chatCannot } : { bot: r.answer, ai: true });
+      } else {
+        const r = await callAI('parse', { text: said, ...context() });
+        add(r.transactions.length ? { proposals: r.transactions.map(proposal), ai: true } : { bot: r.question || t.chatNoAmount, ai: !!r.question });
+      }
+    } catch (err) {
+      const why = aiReason(t, err);
+      if (isQuestion) add({ bot: `${t.chatNeedsAi} ${why}` });
+      else {
+        const p = parseQuick(said, records);
+        add(p && p.category
+          ? { proposals: [proposal({ type: p.type, amount: p.amount, categoryId: p.category.id, accountId: null, toAccountId: null, date: toDateInput(Date.now()), note: p.note, tags: [] })], note: `${t.chatKeywords} ${why}` }
+          : { bot: t.chatNoAmount, note: why });
+      }
+    }
+    setBusy(false);
   }
-  const billText = (b) => `${t[b.type]} ${formatMoney(b.amount, records[b.accountId]?.currency || settings.currency, lang)} · ${nameOf(records[b.categoryId], lang)} · ${nameOf(records[b.accountId], lang)}`;
+
+  const line = (p) => [t[p.type], formatMoney(p.amount, records[p.accountId]?.currency || settings.currency, lang),
+    p.type === 'transfer' ? `${nameOf(records[p.accountId], lang)} → ${nameOf(records[p.toAccountId], lang)}` : `${nameOf(records[p.categoryId], lang)} · ${nameOf(records[p.accountId], lang)}`,
+    new Date(fromDateInput(p.date)).toLocaleDateString(lang === 'id' ? 'id-ID' : 'en-US', { day: 'numeric', month: 'short' })].join(' · ');
+
   return (
     <div className="page chat">
-      <PageHead title={t.chat} sub={t.chatSub} action={msgs.length > 0 && <button className="btn sm" onClick={() => setMsgs([])}>{t.chatClear}</button>} />
+      <PageHead title={t.chat} sub={ai.off ? t.chatSubOff : t.chatSub} action={msgs.length > 0 && <button className="btn sm" onClick={() => setMsgs([])}>{t.chatClear}</button>} />
       <div className="chat-log" aria-live="polite">
         <div className="bubble bot">{t.chatHello}</div>
-        {msgs.map((m, i) => {
-          if (m.me) return <div key={i} className="bubble me">{m.me}</div>;
-          if (m.bot) return <div key={i} className="bubble bot">{m.bot}</div>;
-          const b = records[m.billId];
-          if (!b || b.deleted) return <div key={i} className="bubble bot muted">{t.chatUndone}</div>;
+        {msgs.map((m, mi) => {
+          if (m.me) return <div key={mi} className="bubble me">{m.me}</div>;
+          if (!m.proposals) return <div key={mi} className="bubble bot">{m.ai && <span className="ai-tag">{t.aiLabel}</span>}<span>{m.bot}</span>{m.note && <small className="hint">{m.note}</small>}</div>;
+          const open = m.proposals.filter((p) => p.state === 'open' && !records[p.id]);
           return (
-            <div key={i} className="bubble bot">
-              <span>{t.chatSaved} {billText(b)}</span>
-              <span className="btn-row">
-                <button className="btn sm" onClick={() => onOpenBill(b)}>{t.edit}</button>
-                <button className="btn sm" onClick={() => store.remove(b.id)}>{t.chatUndo}</button>
-              </span>
+            <div key={mi} className="bubble bot wide">
+              {m.ai && <span className="ai-tag">{t.aiLabel}</span>}
+              {m.note && <small className="hint">{m.note}</small>}
+              {m.proposals.map((p) => {
+                const saved = p.state === 'saved' || records[p.id];
+                const gone = saved && (!records[p.id] || records[p.id].deleted);
+                return (
+                  <div key={p.id} className={`proposal ${p.state}`}>
+                    <span>{line(p)}{p.note ? ` · ${p.note}` : ''}</span>
+                    {p.check && !saved && <small className="hint">{t.chatCheckWallet}</small>}
+                    {!valid(p) && p.state === 'open' && <small className="err">{t.chatFix}</small>}
+                    <span className="btn-row">
+                      {p.state === 'dismissed' ? <small className="hint">{t.chatDismissed}</small>
+                        : gone ? <small className="hint">{t.chatUndone}</small>
+                          : saved ? <><small className="ok-msg">{t.chatSaved}</small><button className="btn sm" onClick={() => store.remove(p.id)}>{t.chatUndo}</button></>
+                            : <>
+                              <button className="btn primary sm" disabled={!valid(p)} onClick={() => save(mi, [p])}>{t.save}</button>
+                              <button className="btn sm" onClick={() => onOpenBill(asBill(p))}>{t.edit}</button>
+                              <button className="btn sm" onClick={() => setState(mi, [p.id], 'dismissed')}>{t.chatDismiss}</button>
+                            </>}
+                    </span>
+                  </div>
+                );
+              })}
+              {open.length > 1 && <span className="btn-row"><button className="btn primary sm" onClick={() => save(mi, open)}>{t.chatSaveAll.replace('{n}', open.filter(valid).length)}</button></span>}
             </div>
           );
         })}
+        {busy && <div className="bubble bot muted">{t.chatThinking}</div>}
         <div ref={end} />
       </div>
       <form className="chat-in" onSubmit={send}>
-        <input value={text} onChange={(e) => setText(e.target.value)} placeholder={t.chatPh} aria-label={t.chat} maxLength={140} autoComplete="off" />
-        <button className="btn primary" type="submit" aria-label={t.chatSend} disabled={!text.trim()}><Icon name="send" size={16} /></button>
+        <input value={text} onChange={(e) => setText(e.target.value)} placeholder={t.chatPh} aria-label={t.chat} maxLength={400} autoComplete="off" />
+        <button className="btn primary" type="submit" aria-label={t.chatSend} disabled={!text.trim() || busy}><Icon name="send" size={16} /></button>
       </form>
     </div>
   );

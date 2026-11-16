@@ -1,49 +1,64 @@
 // Local-first data store. Every record carries an id, a kind, updatedAt and a
 // deleted flag so two devices can merge their copies record by record.
 import { useSyncExternalStore } from 'react';
+import { DEFAULT_ICONS, ICON_MAP } from './icons.js';
 
 const REC_KEY = 'kasku.v1.records';
 const SET_KEY = 'kasku.v1.settings';
 const DIRTY_KEY = 'kasku.v1.dirty';
 
-const cat = (id, type, icon, color, idName, enName, order) => ({
-  id, kind: 'category', type, icon, color, names: { id: idName, en: enName }, order, updatedAt: 0,
+// Icons are keys into the drawn set in icons.js (bolt 001); DEFAULT_ICONS holds the built-in choices.
+const CI = DEFAULT_ICONS.categories; const WI = DEFAULT_ICONS.walletTypes; const MI = DEFAULT_ICONS.members;
+const cat = (id, type, color, idName, enName, order) => ({
+  id, kind: 'category', type, icon: CI[id], color, names: { id: idName, en: enName }, order, updatedAt: 0,
 });
 
 // Fixed ids so fresh installs on two devices share the same starter data.
 export function defaultRecords() {
   const r = [
-    { id: 'book-default', kind: 'book', names: { id: 'Buku harian', en: 'Daily ledger' }, icon: '📒', order: 0, updatedAt: 0 },
-    { id: 'acc-cash', kind: 'account', type: 'cash', names: { id: 'Tunai', en: 'Cash' }, icon: '💵', color: '#29bc9b', currency: 'IDR', initBalance: 0, order: 0, updatedAt: 0 },
-    { id: 'acc-bank', kind: 'account', type: 'debit', names: { id: 'Kartu debit', en: 'Debit card' }, icon: '💳', color: '#0070f3', currency: 'IDR', initBalance: 0, order: 1, updatedAt: 0 },
-    { id: 'acc-ewallet', kind: 'account', type: 'ewallet', names: { id: 'Dompet digital', en: 'E-wallet' }, icon: '📲', color: '#7928ca', currency: 'IDR', initBalance: 0, order: 2, updatedAt: 0 },
-    { id: 'mem-me', kind: 'member', names: { id: 'Diri sendiri', en: 'Myself' }, icon: '🙂', order: 0, updatedAt: 0 },
-    { id: 'mem-partner', kind: 'member', names: { id: 'Pasangan', en: 'Partner' }, icon: '💑', order: 1, updatedAt: 0 },
-    { id: 'mem-child', kind: 'member', names: { id: 'Anak', en: 'Child' }, icon: '🧒', order: 2, updatedAt: 0 },
-    { id: 'mem-parent', kind: 'member', names: { id: 'Orang tua', en: 'Parent' }, icon: '👵', order: 3, updatedAt: 0 },
-    cat('cat-food', 'expense', '🍜', '#f5a623', 'Makan', 'Food', 0),
-    cat('cat-daily', 'expense', '🧴', '#00dfd8', 'Harian', 'Daily', 1),
-    cat('cat-traffic', 'expense', '🚌', '#29bc9b', 'Transportasi', 'Transport', 2),
-    cat('cat-social', 'expense', '🍻', '#7928ca', 'Sosial', 'Social', 3),
-    cat('cat-home', 'expense', '🏠', '#ab570a', 'Rumah', 'Housing', 4),
-    cat('cat-gift', 'expense', '🎁', '#ff0080', 'Hadiah', 'Gift', 5),
-    cat('cat-phone', 'expense', '📱', '#0070f3', 'Komunikasi', 'Phone', 6),
-    cat('cat-dress', 'expense', '👕', '#ff4d4d', 'Pakaian', 'Clothes', 7),
-    cat('cat-fun', 'expense', '🎮', '#eb367f', 'Rekreasi', 'Fun', 8),
-    cat('cat-beauty', 'expense', '💄', '#4c2889', 'Kecantikan', 'Beauty', 9),
-    cat('cat-medical', 'expense', '💊', '#c50000', 'Medis', 'Medical', 10),
-    cat('cat-tax', 'expense', '🧾', '#a1a1a1', 'Pajak', 'Tax', 11),
-    cat('cat-edu', 'expense', '📚', '#50e3c2', 'Pendidikan', 'Education', 12),
-    cat('cat-baby', 'expense', '🍼', '#f9cb28', 'Bayi', 'Baby', 13),
-    cat('cat-pet', 'expense', '🐱', '#888888', 'Peliharaan', 'Pet', 14),
-    cat('cat-travel', 'expense', '✈️', '#0761d1', 'Bepergian', 'Travel', 15),
-    cat('cat-wage', 'income', '💰', '#f5a623', 'Gaji', 'Salary', 0),
-    cat('cat-bonus', 'income', '🏅', '#7928ca', 'Bonus', 'Bonus', 1),
-    cat('cat-invest', 'income', '📈', '#29bc9b', 'Investasi', 'Investment', 2),
-    cat('cat-parttime', 'income', '💼', '#0070f3', 'Kerja sampingan', 'Side job', 3),
-    cat('cat-other-in', 'income', '🪙', '#888888', 'Lainnya', 'Other', 4),
+    { id: 'book-default', kind: 'book', names: { id: 'Buku harian', en: 'Daily ledger' }, icon: DEFAULT_ICONS.ledger, order: 0, updatedAt: 0 },
+    { id: 'acc-cash', kind: 'account', type: 'cash', names: { id: 'Tunai', en: 'Cash' }, icon: WI.cash, color: '#29bc9b', currency: 'IDR', initBalance: 0, order: 0, updatedAt: 0 },
+    { id: 'acc-bank', kind: 'account', type: 'debit', names: { id: 'Kartu debit', en: 'Debit card' }, icon: WI.debit, color: '#0070f3', currency: 'IDR', initBalance: 0, order: 1, updatedAt: 0 },
+    { id: 'acc-ewallet', kind: 'account', type: 'ewallet', names: { id: 'Dompet digital', en: 'E-wallet' }, icon: WI.ewallet, color: '#7928ca', currency: 'IDR', initBalance: 0, order: 2, updatedAt: 0 },
+    { id: 'mem-me', kind: 'member', names: { id: 'Diri sendiri', en: 'Myself' }, icon: MI['mem-me'], order: 0, updatedAt: 0 },
+    { id: 'mem-partner', kind: 'member', names: { id: 'Pasangan', en: 'Partner' }, icon: MI['mem-partner'], order: 1, updatedAt: 0 },
+    { id: 'mem-child', kind: 'member', names: { id: 'Anak', en: 'Child' }, icon: MI['mem-child'], order: 2, updatedAt: 0 },
+    { id: 'mem-parent', kind: 'member', names: { id: 'Orang tua', en: 'Parent' }, icon: MI['mem-parent'], order: 3, updatedAt: 0 },
+    cat('cat-food', 'expense', '#f5a623', 'Makan', 'Food', 0),
+    cat('cat-daily', 'expense', '#00dfd8', 'Harian', 'Daily', 1),
+    cat('cat-traffic', 'expense', '#29bc9b', 'Transportasi', 'Transport', 2),
+    cat('cat-social', 'expense', '#7928ca', 'Sosial', 'Social', 3),
+    cat('cat-home', 'expense', '#ab570a', 'Rumah', 'Housing', 4),
+    cat('cat-gift', 'expense', '#ff0080', 'Hadiah', 'Gift', 5),
+    cat('cat-phone', 'expense', '#0070f3', 'Komunikasi', 'Phone', 6),
+    cat('cat-dress', 'expense', '#ff4d4d', 'Pakaian', 'Clothes', 7),
+    cat('cat-fun', 'expense', '#eb367f', 'Rekreasi', 'Fun', 8),
+    cat('cat-beauty', 'expense', '#4c2889', 'Kecantikan', 'Beauty', 9),
+    cat('cat-medical', 'expense', '#c50000', 'Medis', 'Medical', 10),
+    cat('cat-tax', 'expense', '#a1a1a1', 'Pajak', 'Tax', 11),
+    cat('cat-edu', 'expense', '#50e3c2', 'Pendidikan', 'Education', 12),
+    cat('cat-baby', 'expense', '#f9cb28', 'Bayi', 'Baby', 13),
+    cat('cat-pet', 'expense', '#888888', 'Peliharaan', 'Pet', 14),
+    cat('cat-travel', 'expense', '#0761d1', 'Bepergian', 'Travel', 15),
+    cat('cat-wage', 'income', '#f5a623', 'Gaji', 'Salary', 0),
+    cat('cat-bonus', 'income', '#7928ca', 'Bonus', 'Bonus', 1),
+    cat('cat-invest', 'income', '#29bc9b', 'Investasi', 'Investment', 2),
+    cat('cat-parttime', 'income', '#0070f3', 'Kerja sampingan', 'Side job', 3),
+    cat('cat-other-in', 'income', '#888888', 'Lainnya', 'Other', 4),
   ];
   return Object.fromEntries(r.map((x) => [x.id, x]));
+}
+
+// Built-in records saved by an earlier version still carry an emoji icon; give them back their
+// drawn icon. Records the user made are left alone and render the fallback icon.
+function restoreBuiltInIcons(records) {
+  const defs = defaultRecords();
+  let out = records;
+  for (const id of Object.keys(defs)) {
+    const r = records[id];
+    if (r && !ICON_MAP[r.icon]) { if (out === records) out = { ...records }; out[id] = { ...r, icon: defs[id].icon }; }
+  }
+  return out;
 }
 
 // Accent choices for the one accented control (the Catat button, today's marker, the logo's plus).
@@ -60,7 +75,7 @@ function load(key, fallback) {
 }
 
 let state = {
-  records: { ...defaultRecords(), ...load(REC_KEY, {}) },
+  records: restoreBuiltInIcons({ ...defaultRecords(), ...load(REC_KEY, {}) }),
   settings: { ...defaultSettings, themeV: 1, ...load(SET_KEY, {}) },
 };
 // Themes saved before the accent became its own setting reset to the default accent once.
@@ -158,9 +173,8 @@ export function accountBalances(records) {
 
 export const LIABILITY = new Set(['credit', 'payable']);
 
-// Same rule as the original's TodayWidgetProvider.a(String, double): currency format with
-// minimum 0 and maximum 2 fraction digits; fallback "$%.2f" ("$0" for zero). opts.whole = 0
-// fraction digits, as TodayWidgetMediumProvider.c uses for the weekly totals. See MECHANICS.md.
+// Matches TodayWidgetProvider.a (MECHANICS.md): currency format with 0 to 2 decimals, "$%.2f" as fallback.
+// opts.whole drops decimals, as TodayWidgetMediumProvider.c does for the weekly totals.
 export function formatMoney(n, currency = 'IDR', lang = 'id', opts = {}) {
   const v = Number(n) || 0;
   const max = opts.whole || opts.compact ? 0 : 2;

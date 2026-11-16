@@ -4,7 +4,8 @@ import { LangCtx, useT, Icon, Logo, ConfirmHost } from './ui.jsx';
 import { runRecurring } from './logic.js';
 import Ledger from './Ledger.jsx';
 import Analysis from './Analysis.jsx';
-import { SyncBadge } from './More.jsx';
+import { SyncBadge, AuthScreen } from './More.jsx';
+import { useSync } from './sync.js';
 import BillEditor from './BillEditor.jsx';
 import { Budgets, Goals, Debts, Recurring, Rules } from './Money.jsx';
 import { Portfolio, Split, Chat, Kpr, Pph } from './Tools.jsx';
@@ -115,6 +116,6 @@ function Shell() {
 }
 
 export default function App() {
-  const { settings } = useStore();
-  return <LangCtx.Provider value={settings.lang}><Shell /></LangCtx.Provider>;
+  const { settings } = useStore(); const { cfg } = useSync();
+  return <LangCtx.Provider value={settings.lang}>{cfg.session ? <Shell /> : <AuthScreen />}</LangCtx.Provider>;
 }

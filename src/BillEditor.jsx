@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { store, useStore, live, nameOf, uid } from './store.js';
 import { useT, CatIcon, Icon, Sheet, Segmented, confirmAsk } from './ui.jsx';
-import { matchRule, parseQuick, compressImage, putPhoto, getPhoto, delPhoto } from './logic.js';
+import { matchRule, parseQuick, compressImage, putPhoto, getPhoto, delPhoto, fromDateInput } from './logic.js';
+import { callAI, aiReason, context } from './ai.js';
 
 function evalExpr(s) {
   const parts = s.match(/[+-]?[0-9.]+/g);
@@ -37,6 +38,10 @@ export default function BillEditor({ bill, onClose, defaultTime }) {
   const [err, setErr] = useState('');
   const [picker, setPicker] = useState(null); // 'account' | 'to' | 'member'
   const fileRef = useRef(null); const rec = useRef(null);
+  const [aiNote, setAiNote] = useState(''); const [reading, setReading] = useState(false);
+  const manualRef = useRef(manual); manualRef.current = manual;
+  const suggest = useRef(null);
+  useEffect(() => () => clearTimeout(suggest.current), []);
 
   useEffect(() => { if (bill?.hasPhoto) getPhoto(bill.id).then((u) => u && setPhoto(u)).catch(() => {}); }, [bill]);
   useEffect(() => () => rec.current?.abort?.(), []);
@@ -66,7 +71,28 @@ export default function BillEditor({ bill, onClose, defaultTime }) {
     setNote(v);
     if (manual || type === 'transfer') return;
     const c = matchRule(v, records, catType);
-    if (c) setCategoryId(c.id);
+    if (c) { setCategoryId(c.id); return; }
+    // No rule matched: ask AI once the user stops typing; a category picked by hand always wins.
+    clearTimeout(suggest.current);
+    if (v.trim().length < 3) return;
+    suggest.current = setTimeout(async () => {
+      try {
+        const { ids } = await callAI('categorize', { notes: [{ note: v.trim(), type: catType }], categories: context().categories });
+        if (ids[0] && !manualRef.current) { setCategoryId(ids[0]); setAiNote(t.aiSuggested); }
+      } catch { /* keyword fallback already applied */ }
+    }, 600);
+  }
+  async function readReceipt() {
+    setErr(''); setReading(true);
+    try {
+      const r = await callAI('receipt', { image: photo, ...context() });
+      if (!r.readable) { setErr(t.receiptUnreadable); return; }
+      setType('expense'); setExpr(String(r.total));
+      if (r.merchant) setNote(r.merchant);
+      if (r.date) { const d = new Date(time); setTime(fromDateInput(r.date, d.getHours()) + d.getMinutes() * 60000); }
+      if (r.categoryId && !manualRef.current) setCategoryId(r.categoryId);
+      setAiNote(t.receiptFilled);
+    } catch (e) { setErr(aiReason(t, e)); } finally { setReading(false); }
   }
   async function onPhoto(e) {
     const f = e.target.files?.[0]; e.target.value = '';
@@ -146,15 +172,17 @@ export default function BillEditor({ bill, onClose, defaultTime }) {
 
         <div className="pad">
           <div className="amount-row">
-            {type !== 'transfer' && cat ? <CatIcon icon={cat.icon} color={cat.color} size={34} /> : <span className="caticon ph">{type === 'transfer' ? <Icon name="swap" size={16} /> : '?'}</span>}
+            {type !== 'transfer' && cat ? <CatIcon icon={cat.icon} color={cat.color} size={34} /> : <span className="caticon ph"><Icon name={type === 'transfer' ? 'swap' : 'question'} size={16} /></span>}
             <input className="note-in" placeholder={t.notePh} aria-label={t.note} value={note} onChange={(e) => changeNote(e.target.value)} maxLength={120} />
             <span className={`amount ${type}`} aria-live="polite">{expr || '0'}</span>
           </div>
           {err && <div className="err" role="alert">{err}</div>}
+          {aiNote && !err && <div className="hint ai-note" role="status"><span className="ai-tag">{t.aiLabel}</span>{aiNote}</div>}
           {photo && (
             <div className="photo">
               <a href={photo} target="_blank" rel="noreferrer"><img src={photo} alt={t.receipt} /></a>
               <span className="hint grow">{t.photoLocal}</span>
+              <button className="text-btn" disabled={reading} onClick={readReceipt}><Icon name="receipt" size={14} />{reading ? t.receiptReading : t.receiptRead}</button>
               <button className="text-btn danger" onClick={() => { setPhoto(null); setPhotoDirty(true); }}>{t.delete}</button>
             </div>
           )}
@@ -162,8 +190,8 @@ export default function BillEditor({ bill, onClose, defaultTime }) {
             <label className="chip">
               <Icon name="calendar" size={14} /><input type="datetime-local" aria-label={t.date} value={toLocalInput(time)} onChange={(e) => e.target.value && setTime(new Date(e.target.value).getTime())} />
             </label>
-            {type !== 'transfer' && <button className="chip" onClick={() => setPicker('account')}>{acc?.icon} {nameOf(acc, lang)}</button>}
-            <button className="chip" onClick={() => setPicker('member')}>{mem?.icon} {nameOf(mem, lang)}</button>
+            {type !== 'transfer' && <button className="chip" onClick={() => setPicker('account')}><Icon name={acc?.icon} size={14} />{nameOf(acc, lang)}</button>}
+            <button className="chip" onClick={() => setPicker('member')}><Icon name={mem?.icon} size={14} />{nameOf(mem, lang)}</button>
             <label className="chip"><Icon name="tag" size={14} /><input className="tag-in" value={tags} placeholder={t.tagsPh} aria-label={t.tags} maxLength={60} onChange={(e) => setTags(e.target.value)} /></label>
             <button className="chip" onClick={() => fileRef.current?.click()}><Icon name="camera" size={14} />{photo ? t.photoChange : t.photoAdd}</button>
             {Speech && <button className={`chip ${listening ? 'on' : ''}`} aria-pressed={listening} onClick={listen}><Icon name="mic" size={14} />{listening ? t.voiceStop : t.voice}</button>}

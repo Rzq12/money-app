@@ -5,6 +5,7 @@ import { useT, Icon, Logo, Segmented, PageHead, confirmAsk, go } from './ui.jsx'
 import { useSync } from './sync.js';
 import { SyncBadge, SyncSheet, NamedListSheet } from './More.jsx';
 import { hasRate } from './logic.js';
+import { useAi, setAiOff } from './ai.js';
 import { num } from './Money.jsx';
 import Wallet from './Wallet.jsx';
 import { NAV } from './App.jsx';
@@ -72,7 +73,7 @@ function Rates() {
 }
 
 function General({ installPrompt, onInstall }) {
-  const t = useT(); const { records, settings } = useStore();
+  const t = useT(); const { records, settings } = useStore(); const ai = useAi();
   const [open, setOpen] = useState(null);
   const Row = ({ icon, label, value, onClick }) => (
     <button className="row" onClick={onClick}><span className="row-ic"><Icon name={icon} size={18} /></span><span className="grow">{label}</span>
@@ -80,7 +81,7 @@ function General({ installPrompt, onInstall }) {
   );
   return (
     <>
-      <div className="card"><Row icon="cloud" label={t.syncTitle} value={<SyncBadge />} onClick={() => setOpen('sync')} /></div>
+      <div className="card"><Row icon="cloud" label={t.account} value={<SyncBadge />} onClick={() => setOpen('sync')} /></div>
 
       <h2 className="sec-title">{t.ledger}</h2>
       <div className="card">
@@ -99,6 +100,18 @@ function General({ installPrompt, onInstall }) {
           <input type="checkbox" className="switch" checked={settings.dark} onChange={(e) => store.setSettings({ dark: e.target.checked })} /></label>
         <label className="row"><span className="row-ic"><Icon name="globe" size={18} /></span><span className="grow">{t.language}</span>
           <select value={settings.lang} onChange={(e) => store.setSettings({ lang: e.target.value })}><option value="id">Bahasa Indonesia</option><option value="en">English</option></select></label>
+      </div>
+
+      <h2 className="sec-title">{t.aiTitle}</h2>
+      <div className="card">
+        <label className="row"><span className="row-ic"><Icon name="chat" size={18} /></span><span className="grow">{t.aiUse}</span>
+          <input type="checkbox" className="switch" checked={!ai.off} onChange={(e) => setAiOff(!e.target.checked)} /></label>
+        <div className="pad-card">
+          {ai.configured === false && <p className="err">{t.aiErr.not_configured}</p>}
+          {ai.remaining != null && !ai.off && <p className="hint">{t.aiLeft.replace('{n}', ai.remaining)}</p>}
+          <p className="hint">{t.aiSendsIntro}</p>
+          <ul className="ai-sends">{t.aiSends.map((x) => <li key={x}>{x}</li>)}</ul>
+        </div>
       </div>
 
       <h2 className="sec-title">{t.install}</h2>

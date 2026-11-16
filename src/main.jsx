@@ -12,6 +12,7 @@ document.documentElement.dataset.theme = store.get().settings.dark ? 'dark' : 'l
 createRoot(document.getElementById('root')).render(<App />);
 startAutoSync();
 
-if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+// Development serves source files that change constantly; the offline cache is for built apps only.
+if (import.meta.env.PROD && 'serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
 }

@@ -265,10 +265,11 @@ const byRecordName = (records, kind, text) => {
   return low ? live(records, kind).find((r) => [r.name, r.names?.id, r.names?.en].some((n) => n && n.toLowerCase() === low)) : null;
 };
 function candidate(records, settings, { time, type, amount, note, catName, accName, tags }) {
-  const cat = (catName && live(records, 'category').find((c) => c.type === type && byRecordName(records, 'category', catName)?.id === c.id))
-    || matchRule(note, records, type) || catByName(note, records, type) || fallbackCat(records, type);
+  const named = catName && live(records, 'category').find((c) => c.type === type && byRecordName(records, 'category', catName)?.id === c.id);
+  const known = named || matchRule(note, records, type) || catByName(note, records, type);
+  const cat = known || fallbackCat(records, type);
   const acc = byRecordName(records, 'account', accName) || records[settings.lastAccountId] || live(records, 'account')[0];
-  return { time, type, amount: Math.round(Math.abs(amount) * 100) / 100, note: String(note || '').trim().slice(0, 120), categoryId: cat?.id || null, accountId: acc?.id, tags: tags || [] };
+  return { time, type, amount: Math.round(Math.abs(amount) * 100) / 100, note: String(note || '').trim().slice(0, 120), categoryId: cat?.id || null, accountId: acc?.id, tags: tags || [], guessed: !known };
 }
 // Turns spreadsheet rows into bill candidates. Understands this app's own CSV export and the usual
 // bank layouts (date + description + amount, or date + description + debit + credit).

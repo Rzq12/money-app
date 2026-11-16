@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { store, useStore, live, nameOf, uid } from './store.js';
 import { useT, CatIcon, Icon, Sheet, Segmented, IconPicker, confirmAsk } from './ui.jsx';
-import { useSync, configure, signIn, signOut, syncNow, SETUP_SQL } from './sync.js';
-
+import { useSync, signIn, signUp, resetPassword, signOut, syncNow, configured } from './sync.js';
+import { Logo } from './ui.jsx';
 
 export function download(blob, name) {
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
@@ -11,65 +11,80 @@ export function download(blob, name) {
 
 export function SyncBadge() {
   const t = useT(); const { cfg, status } = useSync();
-  const map = { off: t.notConnected, idle: t.synced, syncing: t.syncing, offline: t.offline, error: status.error || 'error' };
-  return <span className={`sync-badge ${status.phase}`} title={cfg.session?.user?.email || ''}>{map[status.phase] || ''}</span>;
+  const map = { off: t.notConnected, idle: status.pending ? t.unsent.replace('{n}', status.pending) : t.synced, syncing: t.syncing, offline: status.pending ? `${t.offline} · ${t.unsent.replace('{n}', status.pending)}` : t.offline, error: t.syncFailed };
+  return <span className={`sync-badge ${status.phase}`} title={status.phase === 'error' ? status.error : cfg.session?.user?.email || ''}>{map[status.phase] || ''}</span>;
 }
 
+// Account and sync state for the signed-in user.
 export function SyncSheet({ onClose }) {
-  const t = useT(); const { cfg, status } = useSync(); const { settings } = useStore();
-  const [url, setUrl] = useState(cfg.url); const [key, setKey] = useState(cfg.key);
-  const [email, setEmail] = useState(''); const [pw, setPw] = useState('');
-  const [msg, setMsg] = useState(null); const [showSql, setShowSql] = useState(false);
-  async function go(create) {
-    setMsg(null);
-    configure(url, key);
-    try {
-      const r = await signIn(email.trim(), pw, create);
-      setMsg({ ok: r === 'confirm' ? (settings.lang === 'en' ? 'Check your email to confirm, then sign in.' : 'Cek email untuk konfirmasi, lalu masuk.') : t.signedIn });
-    } catch (e) { setMsg({ err: e.message }); }
+  const t = useT(); const { cfg, status } = useSync();
+  async function out() {
+    const n = status.pending;
+    if (n && !(await confirmAsk(t.signOutUnsent.replace('{n}', n), { danger: true, okLabel: t.signOut }))) return;
+    await signOut(); onClose();
   }
   return (
-    <Sheet open onClose={onClose} title={t.syncTitle} full>
+    <Sheet open onClose={onClose} title={t.account} full>
       <div className="form">
-        <p className="intro">{t.syncIntro}</p>
-        {cfg.session ? (
-          <div className="card pad-card">
-            <div className="kv"><span>{t.email}</span><b>{cfg.session.user.email}</b></div>
-            <div className="kv"><span>{t.sync}</span><SyncBadge /></div>
-            <div className="kv"><span>{t.lastSync}</span><b>{cfg.lastSync ? new Date(cfg.lastSync).toLocaleString() : t.never}</b></div>
-            <div className="btn-row">
-              <button className="btn primary" onClick={() => syncNow()} disabled={status.phase === 'syncing'}>{t.syncNow}</button>
-              <button className="btn" onClick={signOut}>{t.signOut}</button>
-            </div>
+        <div className="card pad-card">
+          <div className="kv"><span>{t.email}</span><b>{cfg.session?.user?.email}</b></div>
+          <div className="kv"><span>{t.sync}</span><SyncBadge /></div>
+          <div className="kv"><span>{t.lastSync}</span><b>{cfg.lastSync ? new Date(cfg.lastSync).toLocaleString() : t.never}</b></div>
+          {status.phase === 'error' && <p className="err" role="alert">{status.error}</p>}
+          <div className="btn-row">
+            <button className="btn primary" onClick={() => syncNow()} disabled={status.phase === 'syncing'}>{t.syncNow}</button>
+            <button className="btn" onClick={out}>{t.signOut}</button>
           </div>
-        ) : (
-          <>
-            <label className="field"><span>{t.serverUrl}</span><input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://xxxx.supabase.co" autoComplete="off" /></label>
-            <label className="field"><span>{t.serverKey}</span><input value={key} onChange={(e) => setKey(e.target.value)} placeholder="eyJhbGciOi…" autoComplete="off" /></label>
-            <label className="field"><span>{t.email}</span><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" /></label>
-            <label className="field"><span>{t.password}</span><input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" /></label>
-            <div className="btn-row">
-              <button className="btn primary" disabled={!url || !key || !email || pw.length < 6 || status.phase === 'syncing'} onClick={() => go(false)}>{t.signIn}</button>
-              <button className="btn" disabled={!url || !key || !email || pw.length < 6 || status.phase === 'syncing'} onClick={() => go(true)}>{t.signUp}</button>
-            </div>
-          </>
-        )}
-        {msg && <div className={msg.err ? 'err' : 'ok-msg'} role="status">{msg.err || msg.ok}</div>}
-        <button className="text-btn" onClick={() => setShowSql((v) => !v)}><Icon name={showSql ? 'chevD' : 'chevR'} size={14} />{t.syncSetup}</button>
-        {showSql && (
-          <div className="setup">
-            <ol>
-              <li>supabase.com → New project (gratis / free).</li>
-              <li>Project Settings → API: salin <b>Project URL</b> &amp; <b>anon public key</b> ke kolom di atas.</li>
-              <li>SQL Editor → tempel kode ini → Run:</li>
-            </ol>
-            <pre>{SETUP_SQL}</pre>
-            <button className="btn" onClick={() => navigator.clipboard?.writeText(SETUP_SQL)}>Copy SQL</button>
-            <p className="hint">Gunakan alamat, kunci dan akun yang sama di HP dan di website.</p>
-          </div>
-        )}
+        </div>
+        <p className="hint">{t.syncIntro}</p>
       </div>
     </Sheet>
+  );
+}
+
+// Shown instead of the app until someone signs in.
+export function AuthScreen() {
+  const t = useT();
+  const [mode, setMode] = useState('in');
+  const [email, setEmail] = useState(''); const [pw, setPw] = useState('');
+  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(null);
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  const explain = (e) => (/invalid login|invalid_credentials/i.test(e.message) ? t.authBad
+    : /not confirmed/i.test(e.message) ? t.authUnconfirmed
+      : /already registered|already exists/i.test(e.message) ? t.authExists
+        : e.status === 429 ? t.authTooMany : e.message);
+  async function submit(e) {
+    e.preventDefault(); setMsg(null);
+    if (offline) return setMsg({ err: t.authOffline });
+    if (mode !== 'reset' && pw.length < 8) return setMsg({ err: t.authShort });
+    setBusy(true);
+    try {
+      if (mode === 'in') await signIn(email.trim(), pw);
+      else if (mode === 'up') { if ((await signUp(email.trim(), pw)) === 'confirm') setMsg({ ok: t.authCheckMail }); }
+      else { await resetPassword(email.trim()); setMsg({ ok: t.authResetSent }); }
+    } catch (err) { setMsg({ err: explain(err) }); }
+    setBusy(false);
+  }
+  if (!configured) {
+    return <div className="auth"><div className="auth-card"><Logo /><h1>{t.appName}</h1><p className="err" role="alert">{t.notConfigured}</p></div></div>;
+  }
+  return (
+    <div className="auth">
+      <form className="auth-card" onSubmit={submit}>
+        <Logo />
+        <h1>{mode === 'up' ? t.signUpTitle : mode === 'reset' ? t.resetTitle : t.signInTitle}</h1>
+        <p className="hint">{mode === 'reset' ? t.resetIntro : t.authIntro}</p>
+        <label className="field"><span>{t.email}</span><input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" autoFocus /></label>
+        {mode !== 'reset' && <label className="field"><span>{t.password}</span><input type="password" required minLength={8} value={pw} onChange={(e) => setPw(e.target.value)} autoComplete={mode === 'up' ? 'new-password' : 'current-password'} /></label>}
+        {msg && <p className={msg.err ? 'err' : 'ok-msg'} role={msg.err ? 'alert' : 'status'}>{msg.err || msg.ok}</p>}
+        <button className="btn primary" type="submit" disabled={busy}>{busy ? t.syncing : mode === 'up' ? t.signUp : mode === 'reset' ? t.resetSend : t.signIn}</button>
+        <div className="auth-links">
+          {mode !== 'in' && <button type="button" className="text-btn" onClick={() => { setMode('in'); setMsg(null); }}>{t.haveAccount}</button>}
+          {mode !== 'up' && <button type="button" className="text-btn" onClick={() => { setMode('up'); setMsg(null); }}>{t.noAccount}</button>}
+          {mode === 'in' && <button type="button" className="text-btn" onClick={() => { setMode('reset'); setMsg(null); }}>{t.forgot}</button>}
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -100,7 +115,7 @@ export function NamedListSheet({ kind, title, onClose }) {
 function NamedEditor({ kind, item, ctype, count, onClose }) {
   const t = useT(); const { settings, records } = useStore();
   const [name, setName] = useState(item ? nameOf(item, settings.lang) : '');
-  const [icon, setIcon] = useState(item?.icon || (kind === 'book' ? '📒' : kind === 'member' ? '🙂' : '🛒'));
+  const [icon, setIcon] = useState(item?.icon || (kind === 'book' ? 'notebook' : kind === 'member' ? 'person' : 'cart'));
   const [color, setColor] = useState(item?.color || '#ff0080');
   const title = item ? t.edit : kind === 'book' ? t.newLedger : kind === 'member' ? t.newMember : t.newCategory;
   function save() {

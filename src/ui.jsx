@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { dict } from './i18n.js';
 import { useStore, formatMoney, firstDayOfWeek, store } from './store.js';
 import { billBase } from './logic.js';
+import { iconShapes, iconName, iconsByGroup, ICON_GROUPS, DEFAULT_ICONS } from './icons.js';
 
 export const LangCtx = createContext('id');
 export function useT() {
@@ -58,12 +59,26 @@ const ICONS = {
   send: <path d="M4 12l16-7-6 16-3-7-7-2Z" />,
   alert: <><circle cx="12" cy="12" r="9" /><path d="M12 7.5v5.5M12 16.3v.200" /></>,
 };
+// Record icons (src/icons.js) are stored as shape tuples; draw them with the same stroke as above.
+function Shapes({ list }) {
+  return list.map((s, i) => {
+    if (s[0] === 'p') return <path key={i} d={s[1]} />;
+    if (s[0] === 'c') return <circle key={i} cx={s[1]} cy={s[2]} r={s[3]} />;
+    if (s[0] === 'r') return <rect key={i} x={s[1]} y={s[2]} width={s[3]} height={s[4]} rx={s[5]} />;
+    return <circle key={i} cx={s[1]} cy={s[2]} r={s[3]} fill="currentColor" stroke="none" />;
+  });
+}
+
+// Interface icons first, then record icons; anything else (unknown key, old emoji) gets the fallback.
 export function Icon({ name, size = 20 }) {
   return (
     <svg className="ic" viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor"
-      strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{ICONS[name]}</svg>
+      strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {ICONS[name] || <Shapes list={iconShapes(name)} />}
+    </svg>
   );
 }
+export { iconName, iconsByGroup, ICON_GROUPS, DEFAULT_ICONS };
 export function Logo({ small }) {
   const s = small ? 18 : 30;
   return (
@@ -76,10 +91,12 @@ export function Logo({ small }) {
   );
 }
 
+// A record's icon on a tile tinted with its colour. `icon` is a key from the drawn set, or a ready
+// element (the transfer arrows). Unknown values and old emoji draw the fallback icon, never text.
 export function CatIcon({ icon, color = '#888888', size = 40 }) {
   return (
-    <span className="caticon" style={{ width: size, height: size, background: color + '33', fontSize: size * 0.52 }}>
-      <span aria-hidden="true">{icon || '?'}</span>
+    <span className="caticon" style={{ width: size, height: size, background: color + '33' }}>
+      {React.isValidElement(icon) ? icon : <Icon name={typeof icon === 'string' ? icon : ''} size={Math.round(size * 0.5)} />}
     </span>
   );
 }
@@ -257,23 +274,54 @@ export const dayKey = (ms) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-export const EMOJIS = ['🍜', '🍔', '🍰', '☕', '🍺', '🛒', '🧴', '🚌', '🚕', '⛽', '🚗', '🏠', '💡', '💧', '📱', '💻', '👕', '👟', '💄', '💊', '🏥', '📚', '🎓', '🍼', '🐱', '🐶', '✈️', '🏖️', '🎮', '🎬', '🎵', '⚽', '🎁', '💐', '🧾', '🔧', '🌱', '💰', '🏅', '📈', '💼', '🪙', '💵', '💳', '🏦', '📲', '🐷', '💎', '❤️', '⭐'];
 // Data colours come from the design system's gradient pairs and semantic scale.
 export const COLORS = ['#0070f3', '#00dfd8', '#50e3c2', '#29bc9b', '#7928ca', '#ff0080', '#eb367f', '#ff4d4d', '#f5a623', '#f9cb28', '#888888'];
+const GROUPED = iconsByGroup();
+const FLAT = GROUPED.flatMap((g) => g.icons.map((i) => i.key));
 
+// The drawn icons under their group headings, as one radio group with a single tab stop:
+// arrows move (up and down by a row of the grid), Home and End jump, Enter or Space selects.
 export function IconPicker({ icon, color, onIcon, onColor }) {
+  const t = useT(); const lang = useContext(LangCtx);
+  const ref = useRef(null);
+  const current = FLAT.includes(icon) ? icon : null;
+  const [focusKey, setFocusKey] = useState(current || FLAT[0]);
+  const move = (e) => {
+    const opts = [...ref.current.querySelectorAll('[role="radio"]')];
+    const i = opts.indexOf(document.activeElement);
+    if (i < 0) return;
+    // Columns of the grid this option sits in, read from the layout so it follows the screen width.
+    const cols = Math.max(1, opts.filter((o) => o.parentElement === opts[i].parentElement && o.offsetTop === opts[i].offsetTop).length);
+    let j = { ArrowRight: i + 1, ArrowLeft: i - 1, ArrowDown: i + cols, ArrowUp: i - cols, Home: 0, End: opts.length - 1 }[e.key];
+    if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); onIcon(opts[i].dataset.key); return; }
+    if (j == null) return;
+    e.preventDefault();
+    j = Math.min(opts.length - 1, Math.max(0, j));
+    setFocusKey(opts[j].dataset.key); opts[j].focus();
+  };
   return (
     <div className="picker">
-      <div className="emoji-grid">
-        {EMOJIS.map((e) => (
-          <button key={e} type="button" className={`emoji ${icon === e ? 'on' : ''}`} onClick={() => onIcon(e)}
-            style={icon === e ? { background: color + '44' } : undefined}>{e}</button>
+      <div className="icon-groups" role="radiogroup" aria-label={t.icon} ref={ref} onKeyDown={move}>
+        {GROUPED.map((g) => (
+          <div key={g.key} className="icon-group">
+            <div className="icon-group-h" aria-hidden="true">{g[lang === 'en' ? 'en' : 'id']}</div>
+            <div className="icon-grid">
+              {g.icons.map((ic) => (
+                <button key={ic.key} type="button" role="radio" data-key={ic.key} aria-checked={current === ic.key}
+                  aria-label={iconName(ic.key, lang)} title={iconName(ic.key, lang)} tabIndex={focusKey === ic.key ? 0 : -1}
+                  className={`icon-opt ${current === ic.key ? 'on' : ''}`} style={current === ic.key ? { background: (color || '#888888') + '33' } : undefined}
+                  onClick={() => { setFocusKey(ic.key); onIcon(ic.key); }} onFocus={() => setFocusKey(ic.key)}>
+                  <Icon name={ic.key} size={22} />
+                </button>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
       {onColor && (
-        <div className="color-row">
+        <div className="color-row" role="radiogroup" aria-label={t.color}>
           {COLORS.map((c) => (
-            <button key={c} type="button" aria-label={c} className={`swatch ${color === c ? 'on' : ''}`} style={{ background: c }} onClick={() => onColor(c)} />
+            <button key={c} type="button" role="radio" aria-checked={color === c} aria-label={c} className={`swatch ${color === c ? 'on' : ''}`} style={{ background: c }} onClick={() => onColor(c)} />
           ))}
         </div>
       )}

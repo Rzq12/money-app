@@ -4,7 +4,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "build": "node scripts/icons.mjs && vite build"
+    "build": "node scripts/icons.mjs && vite build",
+    "check:icons": "node scripts/check-icons.mjs",
+    "check:emoji": "node scripts/check-emoji.mjs"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",

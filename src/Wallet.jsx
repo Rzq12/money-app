@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { store, useStore, live, nameOf, uid, accountBalances, LIABILITY, CURRENCIES, formatMoney } from './store.js';
-import { useT, useMoney, CatIcon, Icon, Sheet, IconPicker, Empty, confirmAsk, notify } from './ui.jsx';
+import { useT, useMoney, CatIcon, Icon, Sheet, IconPicker, Empty, confirmAsk, notify, DEFAULT_ICONS } from './ui.jsx';
 import { rateOf } from './logic.js';
 import { BillRow } from './Ledger.jsx';
 
 const TYPES = ['cash', 'debit', 'credit', 'ewallet', 'invest', 'receivable', 'payable', 'other'];
-const TYPE_ICON = { cash: '💵', debit: '💳', credit: '💳', ewallet: '📲', invest: '📈', receivable: '🤝', payable: '🧾', other: '🏦' };
+const TYPE_ICON = DEFAULT_ICONS.walletTypes;
 
 function AccountEditor({ acc, onClose }) {
   const t = useT(); const { records, settings } = useStore();
@@ -37,7 +37,7 @@ function AccountEditor({ acc, onClose }) {
           <div className="type-grid">
             {TYPES.map((ty) => (
               <button key={ty} type="button" className={`type-cell ${type === ty ? 'on' : ''}`} onClick={() => { setType(ty); if (!acc) setIcon(TYPE_ICON[ty]); }}>
-                <span>{TYPE_ICON[ty]}</span>{t.types[ty]}
+                <Icon name={TYPE_ICON[ty]} size={22} />{t.types[ty]}
               </button>
             ))}
           </div>

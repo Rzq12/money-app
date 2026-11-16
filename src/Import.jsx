@@ -5,6 +5,7 @@ import { useT, Icon, PageHead, Empty, confirmAsk, notify } from './ui.jsx';
 import { parseCsv, readXlsx, rowsToCandidates, parseNotifText, findDuplicates, looseKey } from './logic.js';
 import { backupBlob, restoreBackup } from './sync.js';
 import { download } from './More.jsx';
+import { callAI, context } from './ai.js';
 import { billTitle } from './Ledger.jsx';
 
 const dateText = (ms, lang) => new Date(ms).toLocaleDateString(lang === 'id' ? 'id-ID' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -18,13 +19,23 @@ export function ImportPage() {
   const bills = useMemo(() => live(records, 'bill').filter((b) => (b.bookId || 'book-default') === settings.bookId), [records, settings.bookId]);
   const groups = useMemo(() => findDuplicates(bills), [bills]);
 
-  function show({ list, skipped }, source) {
+  async function show({ list, skipped }, source) {
     const seen = new Set(bills.map(looseKey));
     const rows = list.filter((c) => c.categoryId && c.accountId && c.amount > 0).map((c) => {
       const k = looseKey(c); const dup = seen.has(k); seen.add(k);
       return { ...c, dup, on: !dup };
     });
     setCands(rows.length ? rows : null);
+    // Rows no rule or name explained go to AI in batches of 50; a failure keeps the default category.
+    const guessed = rows.filter((c) => c.guessed);
+    for (let i = 0; i < guessed.length; i += 50) {
+      const part = guessed.slice(i, i + 50);
+      try {
+        const { ids } = await callAI('categorize', { notes: part.map((c) => ({ note: c.note, type: c.type })), categories: context().categories });
+        part.forEach((c, j) => { if (ids[j]) { c.categoryId = ids[j]; c.ai = true; } });
+        setCands([...rows]);
+      } catch { break; }
+    }
     setInfo(rows.length ? { ok: t.impFound.replace('{n}', rows.length).replace('{s}', skipped + list.length - rows.length) } : { err: source === 'text' ? t.impNoText : t.impNoRows });
   }
   async function onFile(e) {
@@ -39,7 +50,7 @@ export function ImportPage() {
   }
   function doImport() {
     const now = Date.now(); const picked = cands.filter((c) => c.on);
-    store.putMany(picked.map(({ on, dup, ...c }) => ({ ...c, id: uid(), kind: 'bill', bookId: settings.bookId, memberId: 'mem-me', toAccountId: null, createdAt: now })));
+    store.putMany(picked.map(({ on, dup, guessed, ai, ...c }) => ({ ...c, id: uid(), kind: 'bill', bookId: settings.bookId, memberId: 'mem-me', toAccountId: null, createdAt: now })));
     setCands(null); setText(''); setInfo({ ok: t.impDone.replace('{n}', picked.length) });
   }
   async function clean(group) {
@@ -73,7 +84,7 @@ export function ImportPage() {
                 <input type="checkbox" className="check-in" checked={c.on} onChange={(e) => setCands(cands.map((x, j) => (j === i ? { ...x, on: e.target.checked } : x)))} />
                 <span className="bill-main">
                   <span className="bill-title">{c.note || nameOf(records[c.categoryId], lang)}</span>
-                  <span className="bill-sub">{dateText(c.time, lang)} · {nameOf(records[c.categoryId], lang)} · {nameOf(records[c.accountId], lang)}{c.dup ? ` · ${t.impDup}` : ''}</span>
+                  <span className="bill-sub">{dateText(c.time, lang)} · {nameOf(records[c.categoryId], lang)} · {nameOf(records[c.accountId], lang)}{c.dup ? ` · ${t.impDup}` : ''}{c.ai ? ` · ${t.impAiCat}` : ''}</span>
                 </span>
                 <span className={`bill-amt ${c.type}`}>{c.type === 'expense' ? '-' : '+'}{formatMoney(c.amount, records[c.accountId]?.currency || settings.currency, lang)}</span>
               </label>

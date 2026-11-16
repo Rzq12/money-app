@@ -1,6 +1,32 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useStore, live, nameOf } from './store.js';
 import { useT, useMoney, useBase, CatIcon, PeriodNav, Segmented, periodRange, Empty } from './ui.jsx';
+import { callAI, aiReason, getSummary } from './ai.js';
+import { toDateInput } from './logic.js';
+
+// Written summary of one month, stored per month on the server so reopening costs no AI call.
+function MonthSummary({ anchor }) {
+  const t = useT(); const { settings } = useStore();
+  const d = new Date(anchor); const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  const [s, setS] = useState({ month: null }); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  useEffect(() => { let live = true; setErr(''); setS({ month: null }); getSummary(month).then((r) => live && setS({ month, ...r })).catch(() => live && setS({ month })); return () => { live = false; }; }, [month]);
+  async function make() {
+    setBusy(true); setErr('');
+    try {
+      const r = await callAI('summary', { month, lang: settings.lang, today: toDateInput(Date.now()) });
+      if (r.empty) setErr(t.summaryEmpty); else setS({ month, text: r.text, generatedAt: r.generatedAt });
+    } catch (e) { setErr(aiReason(t, e)); } finally { setBusy(false); }
+  }
+  return (
+    <div className="card pad-card">
+      <div className="rank-top"><span>{t.summaryTitle}</span>{s.text && <span className="ai-tag">{t.aiLabel}</span>}</div>
+      {s.text ? <p className="summary-text">{s.text}</p> : <p className="hint">{t.summaryIntro}</p>}
+      {s.generatedAt && <small className="hint">{t.summaryMade.replace('{date}', new Date(s.generatedAt).toLocaleString(settings.lang === 'id' ? 'id-ID' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }))}</small>}
+      {err && <p className="err" role="alert">{err}</p>}
+      <div className="btn-row"><button className="btn sm" disabled={busy} onClick={make}>{busy ? t.chatThinking : s.text ? t.summaryRegen : t.summaryCreate}</button></div>
+    </div>
+  );
+}
 
 const PALETTE = ['#0070f3', '#7928ca', '#ff0080', '#f5a623', '#00dfd8', '#ff4d4d', '#29bc9b', '#eb367f', '#f9cb28', '#888888', '#ab570a', '#4c2889'];
 const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
@@ -89,6 +115,8 @@ export default function Analysis() {
             <div><small>{t.dailyAvg}</small><b>{money(total / days)}</b></div>
             <div><small>{t.count}</small><b>{bills.length}</b></div>
           </div>
+
+          {unit === 'month' && <MonthSummary anchor={anchor} />}
 
           <div className="split even">
             <div className="split-a">
