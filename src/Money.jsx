@@ -1,5 +1,6 @@
 // Budgets, goals, debts, recurring transactions and auto-category rules.
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { store, useStore, live, nameOf, uid, formatMoney } from './store.js';
 import { useT, useMoney, CatIcon, Icon, Sheet, Segmented, PageHead, Empty, AddBtn, Progress, confirmAsk } from './ui.jsx';
 import { budgetSpent, goalSaved, parseNumber, toDateInput, fromDateInput, nextDate, runRecurring } from './logic.js';
@@ -19,15 +20,47 @@ export function AccountSelect({ value, onChange, exclude }) {
     </select>
   );
 }
+// Category field: a button showing the chosen category's icon that opens a list with every icon.
+// (A native <select> can only show text, and the icons are drawn SVGs.)
 export function CategorySelect({ value, onChange, type, all }) {
   const t = useT(); const { records, settings } = useStore();
+  const [open, setOpen] = useState(false);
   const cats = live(records, 'category');
-  const opts = (ty) => cats.filter((c) => c.type === ty).map((c) => <option key={c.id} value={c.id}>{c.icon} {nameOf(c, settings.lang)}</option>);
+  const cur = value ? cats.find((c) => c.id === value) : null;
+  const groups = type ? [[null, type]] : [[t.expense, 'expense'], [t.income, 'income']];
+  const choose = (id) => { onChange(id); setOpen(false); };
+  const tick = <span className="check"><Icon name="check" size={18} /></span>;
   return (
-    <select value={value || ''} onChange={(e) => onChange(e.target.value)}>
-      {all && <option value="">{all}</option>}
-      {type ? opts(type) : <><optgroup label={t.expense}>{opts('expense')}</optgroup><optgroup label={t.income}>{opts('income')}</optgroup></>}
-    </select>
+    <>
+      <button type="button" className="select-btn" aria-haspopup="dialog" onClick={() => setOpen(true)}>
+        {cur ? <CatIcon icon={cur.icon} color={cur.color} size={26} /> : <span className="caticon ph sm"><Icon name="grid" size={14} /></span>}
+        <span className="grow">{cur ? nameOf(cur, settings.lang) : all || t.category}</span>
+        <Icon name="chevD" size={16} />
+      </button>
+      {/* Portal: the field sits inside a <label>, and a click anywhere in it would reopen the list. */}
+      {open && createPortal(
+        <Sheet open onClose={() => setOpen(false)} title={t.category}>
+          <div className="pick-list">
+            {all && (
+              <button className="row" onClick={() => choose('')}>
+                <span className="caticon ph"><Icon name="grid" size={16} /></span><span className="grow">{all}</span>{!value && tick}
+              </button>
+            )}
+            {groups.map(([label, ty]) => (
+              <React.Fragment key={ty}>
+                {label && <h3 className="sec-title">{label}</h3>}
+                {cats.filter((c) => c.type === ty).map((c) => (
+                  <button key={c.id} className="row" onClick={() => choose(c.id)}>
+                    <CatIcon icon={c.icon} color={c.color} size={34} /><span className="grow">{nameOf(c, settings.lang)}</span>{c.id === value && tick}
+                  </button>
+                ))}
+              </React.Fragment>
+            ))}
+          </div>
+        </Sheet>,
+        document.body,
+      )}
+    </>
   );
 }
 export function EditActions({ onSave, onDelete }) {

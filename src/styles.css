@@ -546,3 +546,11 @@ label.bill { cursor: pointer; }
 .combo-list [role="option"] span { color: var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .combo-list [role="option"] small { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .combo-msg { padding: 10px; color: var(--muted); font-size: 13px; }
+
+/* ---------- category field (button that opens the icon list) ---------- */
+.select-btn { display: flex; align-items: center; gap: 10px; width: 100%; height: 40px; padding: 0 12px 0 7px; border-radius: var(--r-sm); background: var(--surface); box-shadow: var(--e1); color: var(--text); font-size: 14px; text-align: left; transition: box-shadow .15s; }
+.select-btn:hover { box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 30%, transparent); }
+.select-btn:focus-visible { box-shadow: 0 0 0 1px var(--focus), 0 0 0 4px color-mix(in srgb, var(--focus) 24%, transparent); }
+.select-btn > svg:last-child { color: var(--muted); flex: none; }
+.caticon.ph.sm { width: 26px; height: 26px; }
+.pick-list .sec-title { margin: 16px 16px 6px; }
