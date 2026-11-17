@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { store, useStore, live, nameOf, uid } from './store.js';
 import { useT, CatIcon, Icon, Sheet, Segmented, confirmAsk } from './ui.jsx';
-import { matchRule, parseQuick, compressImage, putPhoto, getPhoto, delPhoto, fromDateInput } from './logic.js';
+import { matchRule, parseQuick, compressImage, putPhoto, getPhoto, delPhoto, fromDateInput, hasRate } from './logic.js';
 import { callAI, aiReason, context } from './ai.js';
 
 function evalExpr(s) {
@@ -128,12 +128,18 @@ export default function BillEditor({ bill, onClose, defaultTime }) {
   }
 
   function save() {
-    if (hasOp) { setExpr(String(amount)); return; }
+    // "5-10" is worked out first; a negative result says so instead of a plain "enter an amount".
+    if (hasOp) { if (amount < 0) return setErr(t.exprNegative); setExpr(String(amount)); return; }
     if (!(amount > 0)) return setErr(t.enterAmount);
     if (type !== 'transfer' && !cat) return setErr(t.pickCategory);
+    if (type === 'transfer' && (!toAccountId || !records[toAccountId] || records[toAccountId].deleted)) return setErr(t.needToAccount);
     if (type === 'transfer' && accountId === toAccountId) return setErr(t.sameAccount);
+    if (type === 'transfer' && records[accountId]?.currency !== records[toAccountId]?.currency) {
+      const miss = [records[accountId]?.currency, records[toAccountId]?.currency].find((c) => !hasRate(records, c, settings.currency));
+      if (miss) return setErr(t.needRate.replace('{code}', miss));
+    }
     const id = bill?.id || uid();
-    store.put({
+    const saved = store.put({
       id, kind: 'bill', type, amount, note: note.trim(), time,
       bookId: bill?.bookId || settings.bookId, accountId,
       toAccountId: type === 'transfer' ? toAccountId : null,
@@ -141,6 +147,7 @@ export default function BillEditor({ bill, onClose, defaultTime }) {
       tags: [...new Set(tags.split(/[,\s#]+/).filter(Boolean))].slice(0, 6), hasPhoto: !!photo,
       createdAt: bill?.createdAt || Date.now(),
     });
+    if (!saved) return; // storage full: the sheet stays open with the entry, a notice explains why
     if (photoDirty) (photo ? putPhoto(id, photo) : delPhoto(id)).catch(() => {});
     store.setSettings({ lastAccountId: accountId });
     onClose();

@@ -1,6 +1,6 @@
 // Portfolio, split bill, the chat logger and the two calculators.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { store, useStore, live, nameOf, uid, formatMoney } from './store.js';
+import { store, useStore, live, nameOf, uid, formatMoney, CHAT_KEY } from './store.js';
 import { useT, useMoney, Icon, Sheet, Segmented, PageHead, Empty, AddBtn, Progress, confirmAsk } from './ui.jsx';
 import { splitTotals, kpr, pph21, parseQuick, toDateInput, fromDateInput, compressImage } from './logic.js';
 import { callAI, useAi, context, aiReason } from './ai.js';
@@ -173,7 +173,7 @@ function useLivePrices(list, main) {
       const now = Date.now();
       const save = hs.filter((h) => q[h.id] && cents(q[h.id].price) !== h.price && (force || now - (h.priceAt || 0) >= SAVE_EVERY_MS))
         .map((h) => ({ id: h.id, price: cents(q[h.id].price), priceAt: now, ...(h.symbol ? {} : { symbol: cleanSymbol('saham', h.name) }) }));
-      if (save.length) store.putMany(save);
+      if (save.length) store.putMany(save, { keepTime: true });
     } catch { setState((s) => ({ ...s, busy: false, failed: true })); }
   }, [main]);
   useEffect(() => {
@@ -279,7 +279,16 @@ function SplitEditor({ item, onClose }) {
     people: s.people.filter((_, j) => j !== i), paid: (s.paid || []).filter((_, j) => j !== i),
     items: s.items.map((it) => ({ ...it, who: (it.who || []).filter((j) => j !== i).map((j) => (j > i ? j - 1 : j)) })),
   });
-  const toggleWho = (k, i) => set({ items: s.items.map((it, j) => (j !== k ? it : { ...it, who: (it.who || []).includes(i) ? it.who.filter((x) => x !== i) : [...(it.who || []), i] })) });
+  // An empty list means everyone shares the item, so the first tap on a lit chip takes that person out.
+  // The last person cannot be taken out; when everyone is back in, the list returns to empty.
+  const toggleWho = (k, i) => set({ items: s.items.map((it, j) => {
+    if (j !== k) return it;
+    const all = s.people.map((_, x) => x);
+    const cur = (it.who || []).length ? it.who : all;
+    const next = cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i].sort((a, b) => a - b);
+    if (!next.length) return it;
+    return { ...it, who: next.length === all.length ? [] : next };
+  }) });
   function save() {
     if (!s.title.trim()) return setErr(t.needName);
     if (!s.items.length) return setErr(t.splitNeedItem);
@@ -377,7 +386,6 @@ export function Split() {
 }
 
 // ---------- chat: AI understands sentences and questions; keyword rules when AI is unavailable ----------
-const CHAT_KEY = 'kasku.v1.chat';
 const QUESTION = /\?\s*$|^(berapa|apa|kapan|mana|bagaimana|gimana|apakah|bandingkan|tampilkan|how|what|when|which|compare|show)\b/i;
 
 export function Chat({ onOpenBill }) {
@@ -386,7 +394,7 @@ export function Chat({ onOpenBill }) {
   const [msgs, setMsgs] = useState(() => { try { return JSON.parse(localStorage.getItem(CHAT_KEY)) || []; } catch { return []; } });
   const [text, setText] = useState(''); const [busy, setBusy] = useState(false);
   const end = useRef(null);
-  useEffect(() => { localStorage.setItem(CHAT_KEY, JSON.stringify(msgs.slice(-60))); end.current?.scrollIntoView({ block: 'end' }); }, [msgs]);
+  useEffect(() => { try { localStorage.setItem(CHAT_KEY, JSON.stringify(msgs.slice(-60))); } catch { /* storage full: history is a convenience */ } end.current?.scrollIntoView({ block: 'end' }); }, [msgs]);
   const add = (m) => setMsgs((list) => [...list, m]);
   const lastAcc = () => (records[settings.lastAccountId] && !records[settings.lastAccountId].deleted ? settings.lastAccountId : live(records, 'account')[0]?.id);
 

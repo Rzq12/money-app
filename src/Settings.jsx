@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { store, useStore, live, nameOf, CURRENCIES, ACCENTS } from './store.js';
 import { useT, Icon, Logo, Segmented, PageHead, confirmAsk, go } from './ui.jsx';
-import { useSync } from './sync.js';
+import { useSync, resetLocal } from './sync.js';
 import { SyncBadge, SyncSheet, NamedListSheet } from './More.jsx';
 import { hasRate } from './logic.js';
 import { useAi, setAiOff } from './ai.js';
@@ -42,11 +42,23 @@ function Rates() {
   const [code, setCode] = useState('');
   const free = CURRENCIES.filter((c) => c !== base && !used.includes(c));
   const setRate = (c, v) => store.put({ id: `rate-${c}`, kind: 'rate', code: c, rate: num(v), deleted: false });
+  // Rates are "1 CODE = rate base". A new base keeps every rate meaningful by dividing through the
+  // new base's old rate; the old base becomes 1 / that rate. Without that rate they cannot be kept.
+  async function changeBase(next) {
+    if (next === base) return;
+    const r = records[`rate-${next}`]; const k = r && !r.deleted && r.rate > 0 ? Number(r.rate) : null;
+    if (!(await confirmAsk((k ? t.baseChangeQ : t.baseChangeNoRate).replaceAll('{code}', next)))) return;
+    const rates = live(records, 'rate').filter((x) => x.code !== next && x.code !== base);
+    const recs = rates.map((x) => ({ id: x.id, rate: k && x.rate > 0 ? Math.round((x.rate / k) * 1e6) / 1e6 : 0 }));
+    recs.push({ id: `rate-${base}`, kind: 'rate', code: base, rate: k ? Math.round((1 / k) * 1e8) / 1e8 : 0, deleted: false });
+    if (r) recs.push({ id: r.id, deleted: true });
+    if (store.putMany(recs)) store.setSettings({ currency: next });
+  }
   return (
     <>
       <div className="card">
         <label className="row"><span className="row-ic"><Icon name="coin" size={18} /></span><span className="grow">{t.baseCurrency}</span>
-          <select value={base} onChange={(e) => store.setSettings({ currency: e.target.value })}>{CURRENCIES.map((c) => <option key={c}>{c}</option>)}</select></label>
+          <select value={base} onChange={(e) => changeBase(e.target.value)}>{CURRENCIES.map((c) => <option key={c}>{c}</option>)}</select></label>
       </div>
       <p className="hint gut">{t.ratesHint.replace('{base}', base)}</p>
       <h2 className="sec-title">{t.ratesTitle}</h2>
@@ -55,7 +67,7 @@ function Rates() {
           {used.map((c) => (
             <label key={c} className="row">
               <span className="grow">1 {c} ={!hasRate(records, c, base) && <small className="neg"> {t.rateMissing}</small>}</span>
-              <input className="rate-in" inputMode="decimal" aria-label={`1 ${c} = ? ${base}`} defaultValue={records[`rate-${c}`]?.rate || ''} placeholder="0"
+              <input key={`${c}-${records[`rate-${c}`]?.updatedAt || 0}`} className="rate-in" inputMode="decimal" aria-label={`1 ${c} = ? ${base}`} defaultValue={records[`rate-${c}`]?.rate || ''} placeholder="0"
                 onBlur={(e) => setRate(c, e.target.value)} onChange={(e) => { e.target.value = e.target.value.replace(/[^0-9.,]/g, ''); }} />
               <span className="row-val">{base}</span>
             </label>
@@ -73,8 +85,13 @@ function Rates() {
 }
 
 function General({ installPrompt, onInstall }) {
-  const t = useT(); const { records, settings } = useStore(); const ai = useAi();
+  const t = useT(); const { records, settings } = useStore(); const ai = useAi(); const { cfg } = useSync();
   const [open, setOpen] = useState(null);
+  async function reset() {
+    const pending = store.dirtyIds().length + (cfg.settingsDirty ? 1 : 0);
+    const q = !cfg.session ? t.resetQ : pending ? t.resetQSyncPending.replace('{n}', pending) : t.resetQSync;
+    if (await confirmAsk(q, { danger: true, okLabel: t.reset })) resetLocal();
+  }
   const Row = ({ icon, label, value, onClick }) => (
     <button className="row" onClick={onClick}><span className="row-ic"><Icon name={icon} size={18} /></span><span className="grow">{label}</span>
       {value != null && <span className="row-val">{value}</span>}<span className="chev"><Icon name="chevR" size={16} /></span></button>
@@ -121,7 +138,7 @@ function General({ installPrompt, onInstall }) {
       </div>
 
       <div className="card gap">
-        <button className="row danger" onClick={async () => { if (await confirmAsk(t.resetQ, { danger: true, okLabel: t.reset })) store.resetAll(); }}>
+        <button className="row danger" onClick={reset}>
           <span className="row-ic"><Icon name="trash" size={18} /></span><span className="grow">{t.reset}</span></button>
       </div>
 

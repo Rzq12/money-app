@@ -50,7 +50,7 @@ export async function callAI(task, payload) {
 
 // The stored summary for 'YYYY-MM', or {} when there is none.
 export async function getSummary(month) {
-  if (!configured || !accessToken()) return {};
+  if (state.off || !configured || !accessToken()) return {};
   await ensureToken();
   const res = await fetch(`${supabaseUrl}/rest/v1/ai_summaries?select=text,generated_at&month=eq.${month}`, { headers: { apikey: supabaseKey, Authorization: `Bearer ${accessToken()}` } });
   const rows = res.ok ? await res.json() : [];

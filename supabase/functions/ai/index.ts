@@ -15,7 +15,14 @@ const fail = (status: number, error: string, extra: Json = {}) => reply(status, 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const isDate = (s: unknown): s is string => typeof s === 'string' && DATE.test(s) && !Number.isNaN(Date.parse(s));
 const str = (v: unknown, max = 120) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
-const money = (v: unknown) => { const n = typeof v === 'string' ? Number(v.replace(/[^0-9.]/g, '')) : Number(v); return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null; };
+// Amounts may come back as text written either way: "25.000", "25.000,50", "25,000.50", "Rp 25.000".
+const toNumber = (v: string) => {
+  const s = v.replace(/rp\.?|idr|\s/gi, '');
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) return Number(s.replace(/\./g, '').replace(',', '.'));
+  if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) return Number(s.replace(/,/g, ''));
+  return Number(s.replace(',', '.'));
+};
+const money = (v: unknown) => { const n = typeof v === 'string' ? toNumber(v) : Number(v); return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null; };
 const pick = (id: unknown, list: Json[]) => (typeof id === 'string' && list.some((x) => x.id === id) ? id : null);
 const shiftDays = (d: string, n: number) => new Date(Date.parse(d) + n * 86400000).toISOString().slice(0, 10);
 const listOf = (v: unknown, max: number): Json[] => (Array.isArray(v) ? v.slice(0, max) : []);

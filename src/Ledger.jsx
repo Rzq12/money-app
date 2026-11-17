@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useStore, live, nameOf, firstDayOfWeek, formatMoney } from './store.js';
-import { useT, useMoney, useBase, useTween, CatIcon, Icon, PeriodNav, Segmented, periodRange, dayKey, Sheet, Empty, Progress } from './ui.jsx';
-import { mainBudget } from './logic.js';
+import { useT, useMoney, useBase, useTween, useLiveAnchor, CatIcon, Icon, PeriodNav, Segmented, periodRange, dayKey, Sheet, Empty, Progress } from './ui.jsx';
+import { mainBudget, parseNumber } from './logic.js';
 
 export function billTitle(b, records, lang) {
   if (b.type === 'transfer') return `${nameOf(records[b.accountId], lang)} → ${nameOf(records[b.toAccountId], lang)}`;
@@ -169,7 +169,7 @@ function Calendar({ anchor, bills, onOpen, onAddDay, t }) {
 export default function Ledger({ onOpenBill, onAddAt }) {
   const t = useT(); const money = useMoney(); const base = useBase();
   const { records, settings } = useStore();
-  const [anchor, setAnchor] = useState(() => Date.now());
+  const [anchor, setAnchor] = useLiveAnchor();
   const [view, setView] = useState('detail');
   const [searchOpen, setSearchOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -183,11 +183,14 @@ export default function Ledger({ onOpenBill, onAddAt }) {
 
   const results = useMemo(() => {
     const k = q.trim().toLowerCase(); if (!k) return [];
-    const num = parseFloat(k.replace(/[^0-9.]/g, ''));
+    // Amounts are read the way they are written: ">1.000" is more than a thousand, "25.000" finds 25000.
     const gt = k.startsWith('>'); const lt = k.startsWith('<');
+    const bare = k.replace(/^[<>]\s*/, '');
+    const num = /^(rp\.?\s*)?[\d.,]+$/.test(bare) ? parseNumber(bare) : NaN;
     return allBills.filter((b) => {
       if (gt && !Number.isNaN(num)) return b.amount > num;
       if (lt && !Number.isNaN(num)) return b.amount < num;
+      if (!Number.isNaN(num) && String(b.amount).includes(String(num))) return true;
       const hay = [b.note, String(b.amount), billTitle(b, records, settings.lang), nameOf(records[b.accountId], settings.lang), ...(b.tags || []).map((x) => `#${x}`)].join(' ').toLowerCase();
       return hay.includes(k);
     });

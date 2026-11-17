@@ -17,7 +17,14 @@ export function rateOf(records, code, base) {
   const r = records[`rate-${code}`];
   return r && !r.deleted && r.rate > 0 ? Number(r.rate) : 1;
 }
-export const hasRate = (records, code, base) => rateOf(records, code, base) !== 1 || code === base;
+export const hasRate = (records, code, base) => {
+  if (!code || code === base) return true;
+  const r = records[`rate-${code}`];
+  return !!(r && !r.deleted && r.rate > 0);
+};
+// Currencies used by live accounts that have no rate to the main currency yet.
+export const missingRates = (records, base) =>
+  [...new Set(live(records, 'account').map((a) => a.currency))].filter((c) => !hasRate(records, c, base));
 export const billBase = (b, records, base) => (Number(b.amount) || 0) * rateOf(records, records[b.accountId]?.currency, base);
 
 // ---------- periods and budgets ----------
@@ -81,12 +88,19 @@ export function parseNumber(v) {
   return neg ? -n : n;
 }
 const UNIT = { rb: 1e3, ribu: 1e3, k: 1e3, jt: 1e6, juta: 1e6, m: 1e9, miliar: 1e9 };
+const AMOUNT = /(rp\.?\s*)?(\d[\d.,]*\d|\d)\s*(ribu|rb|k|juta|jt|miliar|m)?(?![a-z0-9])/gi;
+// The money amount in a sentence. A number with "Rp" or a unit (rb, jt…) wins over a bare number,
+// so "makan 2 porsi 25rb" is 25.000; among bare numbers the largest wins ("beli 3 kopi 45000").
 export function parseAmount(text) {
-  const m = (text || '').match(/(?:rp\.?\s*)?(\d[\d.,]*\d|\d)\s*(ribu|rb|k|juta|jt|miliar|m)?(?![a-z0-9])/i);
-  if (!m) return null;
-  const unit = (m[2] || '').toLowerCase();
-  const n = unit ? parseFloat(m[1].replace(',', '.')) * UNIT[unit] : parseNumber(m[1]);
-  return n > 0 ? { value: Math.round(n * 100) / 100, match: m[0] } : null;
+  let best = null;
+  for (const m of (text || '').matchAll(AMOUNT)) {
+    const unit = (m[3] || '').toLowerCase();
+    const n = unit ? parseFloat(m[2].replace(',', '.')) * UNIT[unit] : parseNumber(m[2]);
+    if (!(n > 0)) continue;
+    const strong = Boolean(unit || m[1]);
+    if (!best || (strong && !best.strong) || (strong === best.strong && n > best.n)) best = { n, strong, match: m[0] };
+  }
+  return best ? { value: Math.round(best.n * 100) / 100, match: best.match } : null;
 }
 const INCOME_WORDS = /\b(masuk|gaji|gajian|terima|diterima|menerima|pemasukan|bonus|dapat|income|salary|received|credited)\b/i;
 export function fallbackCat(records, type) {
@@ -124,26 +138,35 @@ export function nextDate(ms, freq, anchorDay) {
   }
   return d.getTime();
 }
+// The first date of a schedule after `now`, skipping the dates that passed while it was paused.
+export function nextAfter(ms, freq, day, now = Date.now()) {
+  let next = ms; let guard = 0;
+  while (next <= now && guard++ < 100000) next = nextDate(next, freq, day);
+  return next;
+}
 // Creates every bill that is due. Ids are derived from the schedule and the date, so two devices
-// that both run this produce the same record instead of a duplicate.
+// that both run this produce the same record instead of a duplicate. A made bill carries its due time
+// as updatedAt, and moving the schedule on keeps the schedule's own updatedAt: an edit, delete or
+// pause made on another device is always newer and wins when the copies merge.
 export function runRecurring(now = Date.now()) {
   let made = 0;
   for (const r of live(store.get().records, 'recurring')) {
     if (!r.active || !r.next) continue;
     let next = r.next; let guard = 0;
-    while (next <= now && guard++ < 400) {
+    while (next <= now && guard++ < 10000) {
       const id = `${r.id}@${dayKeyOf(next)}`;
       if (!store.get().records[id]) {
-        store.put({
+        const ok = store.put({
           id, kind: 'bill', type: r.type, amount: r.amount, note: r.note || '', time: next, bookId: r.bookId, accountId: r.accountId,
           toAccountId: r.type === 'transfer' ? r.toAccountId : null, categoryId: r.type === 'transfer' ? null : r.categoryId,
           memberId: r.memberId || 'mem-me', recurringId: r.id, createdAt: now,
-        });
+        }, { at: next });
+        if (!ok) return made; // storage full: stop here, the schedule still points at this date
         made++;
       }
       next = nextDate(next, r.freq, r.day);
     }
-    if (next !== r.next) store.put({ id: r.id, next });
+    if (next !== r.next) store.put({ id: r.id, next }, { at: (r.updatedAt || 0) + 0.001 });
   }
   return made;
 }
@@ -201,6 +224,10 @@ const MON = { jan: 0, feb: 1, mar: 2, apr: 3, mei: 4, may: 4, jun: 5, jul: 6, ag
 // free text keeps to - and / so that "1.250.000" is never read as a date.
 export function parseDate(v, loose = true) {
   if (v == null || v === '') return null;
+  // A full ISO time with a zone ("…T17:30:00.000Z", as older CSV exports wrote) names one exact moment.
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/.test(v.trim())) {
+    const ms = Date.parse(v.trim()); if (!Number.isNaN(ms)) return ms;
+  }
   const n = typeof v === 'number' ? v : /^\d{5}(\.\d+)?$/.test(String(v).trim()) ? Number(v) : NaN;
   if (n > 20000 && n < 80000) { // spreadsheet serial day
     const d = new Date(Math.round((n - 25569) * DAY));
@@ -282,7 +309,9 @@ export function rowsToCandidates(rows, records, settings) {
   if (col.date == null || (col.amount == null && col.debit == null && col.credit == null)) { // no usable header: guess from the first row
     body = rows; const r = rows[0];
     for (const k of Object.keys(col)) delete col[k];
-    col.date = r.findIndex((x) => parseDate(x) != null);
+    // A written date wins over a bare number, which may be an amount that only looks like a spreadsheet day.
+    const written = r.findIndex((x) => typeof x === 'string' && !/^\s*[\d.,]+\s*$/.test(x) && parseDate(x) != null);
+    col.date = written >= 0 ? written : r.findIndex((x) => parseDate(x) != null);
     col.amount = r.findIndex((x, i) => i !== col.date && !Number.isNaN(parseNumber(x)) && String(x).trim() !== '');
     col.note = r.reduce((best, x, i) => (i !== col.date && i !== col.amount && String(x).length > String(r[best] ?? '').length ? i : best), -1);
     if (col.date < 0 || col.amount < 0) return { list: [], skipped: rows.length };
