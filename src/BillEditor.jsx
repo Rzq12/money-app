@@ -9,6 +9,18 @@ function evalExpr(s) {
   if (!parts) return 0;
   return Math.round(parts.reduce((a, p) => a + (parseFloat(p) || 0), 0) * 100) / 100;
 }
+// The typed expression with thousands grouped, in the app language's style:
+// "8999.5+1200" reads "8.999,5+1.200" in Indonesian and "8,999.5+1,200" in English.
+// Only the display changes; the expression itself keeps plain digits and '.' decimals.
+const decimalMark = (lang) => (lang === 'id' ? ',' : '.');
+function formatExpr(s, lang) {
+  const group = lang === 'id' ? '.' : ',';
+  return s.replace(/[0-9.]+/g, (num) => {
+    const [int, dec] = num.split('.');
+    const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, group);
+    return dec === undefined ? grouped : grouped + decimalMark(lang) + dec;
+  });
+}
 const toLocalInput = (ms) => {
   const d = new Date(ms); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().slice(0, 16);
@@ -174,7 +186,7 @@ export default function BillEditor({ bill, onClose, defaultTime }) {
           <div className="amount-row">
             {type !== 'transfer' && cat ? <CatIcon icon={cat.icon} color={cat.color} size={34} /> : <span className="caticon ph"><Icon name={type === 'transfer' ? 'swap' : 'question'} size={16} /></span>}
             <input className="note-in" placeholder={t.notePh} aria-label={t.note} value={note} onChange={(e) => changeNote(e.target.value)} maxLength={120} />
-            <span className={`amount ${type}`} aria-live="polite">{expr || '0'}</span>
+            <span className={`amount ${type}`} aria-live="polite">{expr ? formatExpr(expr, lang) : '0'}</span>
           </div>
           {err && <div className="err" role="alert">{err}</div>}
           {aiNote && !err && <div className="hint ai-note" role="status"><span className="ai-tag">{t.aiLabel}</span>{aiNote}</div>}
@@ -202,7 +214,7 @@ export default function BillEditor({ bill, onClose, defaultTime }) {
               if (k === 'date') return <button key={k} className="key fn" onClick={() => setTime(Date.now())}>{t.today}</button>;
               if (k === 'ok') return <button key={k} className="key ok" onClick={save}>{hasOp ? '=' : t.done}</button>;
               if (k === 'del') return <button key={k} className="key fn" aria-label={t.backspace} onClick={() => press('del')}><Icon name="backspace" /></button>;
-              return <button key={k} className={`key ${k === '+' || k === '-' ? 'fn' : ''}`} onClick={() => press(k)}>{k}</button>;
+              return <button key={k} className={`key ${k === '+' || k === '-' ? 'fn' : ''}`} onClick={() => press(k)}>{k === '.' ? decimalMark(lang) : k}</button>;
             })}
           </div>
         </div>
