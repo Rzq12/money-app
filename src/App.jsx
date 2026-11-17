@@ -6,6 +6,7 @@ import Ledger from './Ledger.jsx';
 import Analysis from './Analysis.jsx';
 import { SyncBadge, AuthScreen } from './More.jsx';
 import { useSync } from './sync.js';
+import { setStatusBar } from './native.js';
 import BillEditor from './BillEditor.jsx';
 import { Budgets, Goals, Debts, Recurring, Rules } from './Money.jsx';
 import { Portfolio, Split, Chat, Kpr, Pph } from './Tools.jsx';
@@ -61,6 +62,7 @@ function Shell() {
     r.dataset.theme = settings.dark ? 'dark' : 'light';
     r.lang = settings.lang;
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', settings.dark ? '#000000' : '#fafafa');
+    setStatusBar(settings.dark);
   }, [settings.theme, settings.dark, settings.lang]);
 
   const openBill = (b) => setEditor({ bill: b });

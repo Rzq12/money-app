@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { dict } from './i18n.js';
 import { useStore, formatMoney, firstDayOfWeek, store } from './store.js';
 import { billBase } from './logic.js';
+import { pushDialog } from './native.js';
 import { iconShapes, iconName, iconsByGroup, ICON_GROUPS, DEFAULT_ICONS } from './icons.js';
 
 export const LangCtx = createContext('id');
@@ -122,7 +123,8 @@ function useDialogFocus(open, onClose) {
       else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
     };
     el.addEventListener('keydown', k);
-    return () => { el.removeEventListener('keydown', k); prev?.focus?.(); };
+    const unBack = pushDialog(() => close.current?.()); // Android back button
+    return () => { el.removeEventListener('keydown', k); unBack(); prev?.focus?.(); };
   }, [open]);
   return ref;
 }

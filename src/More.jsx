@@ -3,11 +3,10 @@ import { store, useStore, live, nameOf, uid } from './store.js';
 import { useT, CatIcon, Icon, Sheet, Segmented, IconPicker, confirmAsk } from './ui.jsx';
 import { useSync, signIn, signUp, resetPassword, signOut, syncNow, configured } from './sync.js';
 import { Logo } from './ui.jsx';
+import { saveFile } from './native.js';
 
-export function download(blob, name) {
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
-  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-}
+// Browser download on the web, share sheet in the Android/iOS apps.
+export const download = (blob, name) => saveFile(blob, name);
 
 export function SyncBadge() {
   const t = useT(); const { cfg, status } = useSync();
