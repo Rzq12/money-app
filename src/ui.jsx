@@ -10,6 +10,26 @@ export function useT() {
   const lang = useContext(LangCtx);
   return dict[lang] || dict.id;
 }
+// Counts a number up to its new value (from 0 on first render) so a changed total is noticed.
+// Display only: callers still use the real value everywhere else. Instant under reduced motion.
+const reduceMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+export function useTween(value, ms = 400) {
+  const [shown, setShown] = useState(() => (reduceMotion() ? value : 0));
+  const from = useRef(shown);
+  useEffect(() => {
+    if (reduceMotion() || from.current === value) { from.current = value; setShown(value); return undefined; }
+    const a = from.current; const t0 = performance.now(); let raf;
+    const step = (now) => {
+      const p = Math.min(1, (now - t0) / ms); const k = 1 - (1 - p) ** 3; // ease-out cubic
+      const v = p < 1 ? Math.round(a + (value - a) * k) : value;
+      from.current = v; setShown(v);
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [value, ms]);
+  return shown;
+}
 export function useMoney() {
   const { settings } = useStore();
   return (n, opts) => formatMoney(n, settings.currency, settings.lang, opts);

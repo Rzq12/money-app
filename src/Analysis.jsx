@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useStore, live, nameOf } from './store.js';
-import { useT, useMoney, useBase, CatIcon, PeriodNav, Segmented, periodRange, Empty } from './ui.jsx';
+import { useT, useMoney, useBase, useTween, CatIcon, PeriodNav, Segmented, periodRange, Empty } from './ui.jsx';
 import { callAI, aiReason, getSummary } from './ai.js';
 import { toDateInput } from './logic.js';
 
@@ -20,7 +20,8 @@ function MonthSummary({ anchor }) {
   return (
     <div className="card pad-card">
       <div className="rank-top"><span>{t.summaryTitle}</span>{s.text && <span className="ai-tag">{t.aiLabel}</span>}</div>
-      {s.text ? <p className="summary-text">{s.text}</p> : <p className="hint">{t.summaryIntro}</p>}
+      {s.month !== month ? <div className="skel-lines" aria-busy="true" aria-label={t.chatThinking}><i /><i /><i /></div>
+        : s.text ? <p className="summary-text">{s.text}</p> : <p className="hint">{t.summaryIntro}</p>}
       {s.generatedAt && <small className="hint">{t.summaryMade.replace('{date}', new Date(s.generatedAt).toLocaleString(settings.lang === 'id' ? 'id-ID' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }))}</small>}
       {err && <p className="err" role="alert">{err}</p>}
       <div className="btn-row"><button className="btn sm" disabled={busy} onClick={make}>{busy ? t.chatThinking : s.text ? t.summaryRegen : t.summaryCreate}</button></div>
@@ -61,6 +62,7 @@ export default function Analysis() {
   const [s, e] = periodRange(unit, anchor);
   const bills = live(records, 'bill').filter((b) => (b.bookId || 'book-default') === settings.bookId && b.type === kind && b.time >= s.getTime() && b.time < e.getTime());
   const total = bills.reduce((a, b) => a + base(b), 0);
+  const totalA = useTween(total);
   const days = Math.max(1, Math.round((Math.min(e.getTime(), Date.now()) - s.getTime()) / 86400000) || 1);
 
   const parts = useMemo(() => {
@@ -111,7 +113,7 @@ export default function Analysis() {
       {!bills.length ? <Empty icon="analysis" title={t.noData.replace('{kind}', kindLabel.toLowerCase())} hint={t.noDataHint} /> : (
         <>
           <div className="stats card">
-            <div><small>{t.total}</small><b>{money(total)}</b></div>
+            <div><small>{t.total}</small><b>{money(totalA)}</b></div>
             <div><small>{t.dailyAvg}</small><b>{money(total / days)}</b></div>
             <div><small>{t.count}</small><b>{bills.length}</b></div>
           </div>
