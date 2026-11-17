@@ -23,11 +23,25 @@ Kasku+ versi HP memakai [Capacitor](https://capacitorjs.com): kode React yang sa
 
 Ikon sumber di `resources/` dibuat oleh `scripts/icons.mjs` (jalan otomatis saat `npm run build`).
 
-## Rilis
+## Rilis APK lewat GitHub Releases
 
-- **Android**: di Android Studio, *Build > Generate Signed App Bundle / APK*, lalu unggah `.aab` ke Google Play Console.
-- **iOS**: di Xcode, pilih Team di *Signing & Capabilities*, lalu *Product > Archive* dan unggah ke App Store Connect.
-- Naikkan versi di `android/app/build.gradle` (`versionCode`, `versionName`) dan di Xcode (*Version*, *Build*) setiap rilis.
+Setiap tag versi yang di-push otomatis menjadi rilis berisi APK yang siap diunduh dan dipasang:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Workflow `.github/workflows/release.yml` lalu membangun APK bertanda tangan dan membuat rilis **Kasku+ 1.0.0** berisi `kasku-plus-1.0.0.apk`, plus file `.sha256`. Unduh dari halaman **Releases** di GitHub; di HP, izinkan *Instal aplikasi tidak dikenal* untuk browser/file manager saat pertama kali memasang.
+
+- Versi diambil dari tag: `v1.2.3` → versi `1.2.3`, versionCode `10203`. Tag baru harus lebih tinggi dari sebelumnya, dan minor/patch di bawah 100.
+- Secret yang dibutuhkan di repo (*Settings > Secrets and variables > Actions*): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (DB yang dipakai APK rilis), `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
+- **Kunci tanda tangan (keystore) tidak boleh hilang atau diganti.** Android hanya mau memasang pembaruan yang ditandatangani kunci yang sama; tanpa kunci lama, pengguna harus menghapus app (dan data lokalnya) dulu. Simpan file keystore dan kata sandinya di tempat aman di luar repo.
+
+## Rilis ke toko aplikasi
+
+- **Android**: di Android Studio, *Build > Generate Signed App Bundle / APK* dengan keystore yang sama, lalu unggah `.aab` ke Google Play Console.
+- **iOS**: di Xcode, pilih Team di *Signing & Capabilities*, lalu *Product > Archive* dan unggah ke App Store Connect. (iOS tidak bisa dipasang dari file seperti APK.)
 
 ## CI
 
