@@ -1,5 +1,6 @@
 // Price proxy for the portfolio on the web: Yahoo Finance sends no CORS header, so browsers
 // cannot read it directly. The Android/iOS app calls Yahoo itself and does not use this.
+// POST { search: "bank central" } → listings for the code picker (see below), or
 // POST { symbols: ["BBCA.JK", "AAPL", "BTC-USD", "GC=F", "USDIDR=X"] }
 //   → { ok: true, quotes: { [symbol]: {price, prev, currency, time, name} | null } }
 // null = the market has no such symbol; a symbol missing from `quotes` could not be fetched.
@@ -30,6 +31,22 @@ export async function handle(req: Request, http: typeof fetch = fetch): Promise<
   if (req.method !== 'POST') return reply(405, { ok: false, error: 'method' });
   let body: Json;
   try { body = await req.json(); } catch { return reply(400, { ok: false, error: 'bad_request' }); }
+
+  // Code picker: POST { search: "bank central" } → { ok, results: [{symbol, shortname, longname, exchange, exchDisp, quoteType}] }
+  if (typeof body?.search === 'string') {
+    const q = body.search.trim().slice(0, 40);
+    if (q.length < 2) return reply(400, { ok: false, error: 'bad_request' });
+    try {
+      const res = await http(`https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=20&newsCount=0&listsCount=0`, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Kasku+)' }, signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) return reply(502, { ok: false, error: 'upstream' });
+      const quotes = ((await res.json())?.quotes || []) as Json[];
+      const results = quotes.filter((x) => x?.symbol).map(({ symbol, shortname, longname, exchange, exchDisp, quoteType }) => ({ symbol, shortname, longname, exchange, exchDisp, quoteType }));
+      return reply(200, { ok: true, results });
+    } catch { return reply(502, { ok: false, error: 'upstream' }); }
+  }
+
   const symbols = Array.isArray(body?.symbols)
     ? [...new Set(body.symbols.map((s: unknown) => String(s).toUpperCase()).filter((s: string) => SYMBOL.test(s)))].slice(0, MAX) as string[]
     : [];

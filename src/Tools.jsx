@@ -5,7 +5,7 @@ import { useT, useMoney, Icon, Sheet, Segmented, PageHead, Empty, AddBtn, Progre
 import { splitTotals, kpr, pph21, parseQuick, toDateInput, fromDateInput, compressImage } from './logic.js';
 import { callAI, useAi, context, aiReason } from './ai.js';
 import { num, Field, AmountInput, EditActions } from './Money.jsx';
-import { LIVE_KINDS, GOLD, cleanSymbol, yahooSymbol, quoteHoldings } from './quotes.js';
+import { LIVE_KINDS, GOLD, cleanSymbol, yahooSymbol, quoteHoldings, searchSymbols } from './quotes.js';
 
 const pctText = (v) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
 
@@ -17,6 +17,75 @@ const cents = (v) => Math.round(v * 100) / 100;
 const WHOLE = { whole: true }; // portfolio amounts without cents, so totals fit on a phone
 const isLive = (type, gold) => (type === 'emas' ? gold : LIVE_KINDS.includes(type));
 
+// Code field with suggestions from the market, so the stored code is exactly the exchange's.
+// Typing a code or company name lists matches; picking one fills the code (and the name if empty).
+function SymbolPicker({ type, value, onType, onPick, hint, autoFocus }) {
+  const t = useT();
+  const [list, setList] = useState([]); const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1); const [status, setStatus] = useState('idle'); // idle | loading | empty | failed
+  const inputRef = useRef(null); const timer = useRef(null); const seq = useRef(0);
+  const id = `sym-${type}`;
+  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => { seq.current++; setList([]); setOpen(false); setStatus('idle'); }, [type]);
+  function search(text) {
+    clearTimeout(timer.current);
+    const n = ++seq.current;
+    if (text.trim().length < 2) { setList([]); setOpen(false); setStatus('idle'); return; }
+    setStatus('loading'); setOpen(true);
+    timer.current = setTimeout(async () => {
+      try {
+        const found = await searchSymbols(type, text);
+        if (n !== seq.current) return;
+        setList(found); setActive(found.length ? 0 : -1); setStatus(found.length ? 'idle' : 'empty');
+      } catch { if (n === seq.current) { setList([]); setStatus('failed'); } }
+    }, 250);
+  }
+  function pick(x) { seq.current++; onPick(x); setOpen(false); setList([]); setStatus('idle'); }
+  const keys = useRef(null);
+  keys.current = (e) => {
+    if (!open) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (list.length) setActive((a) => (a + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length);
+    } else if (e.key === 'Enter' && list[active]) { e.preventDefault(); pick(list[active]); }
+    else if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); } // close the list, not the sheet
+  };
+  // A native listener: it runs before the sheet's own Escape handler further up the tree.
+  useEffect(() => {
+    const el = inputRef.current; const k = (e) => keys.current(e);
+    el.addEventListener('keydown', k);
+    return () => el.removeEventListener('keydown', k);
+  }, []);
+  return (
+    <div className="field">
+      <label htmlFor={id}>{t.pfSymbol}</label>
+      <div className="combo">
+        <input id={id} ref={inputRef} value={value} maxLength={40} autoFocus={autoFocus}
+          autoComplete="off" autoCorrect="off" spellCheck={false}
+          role="combobox" aria-expanded={open} aria-controls={`${id}-list`} aria-autocomplete="list"
+          aria-activedescendant={open && active >= 0 && list[active] ? `${id}-${active}` : undefined}
+          onChange={(e) => { onType(e.target.value); search(e.target.value); }}
+          onFocus={() => { if (list.length) setOpen(true); }}
+          onBlur={() => setTimeout(() => setOpen(false), 150)} />
+        {open && (
+          <ul className="combo-list" role="listbox" id={`${id}-list`} aria-label={t.pfSymbol}>
+            {list.map((x, i) => (
+              <li key={x.symbol} id={`${id}-${i}`} role="option" aria-selected={i === active} className={i === active ? 'on' : ''}
+                onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setActive(i)} onClick={() => pick(x)}>
+                <b>{x.symbol}</b><span>{x.name}</span>{x.exchange && <small>{x.exchange}</small>}
+              </li>
+            ))}
+            {status === 'loading' && !list.length && <li className="combo-msg">{t.pfSearching}</li>}
+            {status === 'empty' && <li className="combo-msg">{t.pfSearchNone}</li>}
+            {status === 'failed' && <li className="combo-msg">{t.pfSearchFailed}</li>}
+          </ul>
+        )}
+      </div>
+      <small className="hint">{hint}</small>
+    </div>
+  );
+}
+
 function HoldingEditor({ item, onClose }) {
   const t = useT(); const { settings } = useStore();
   const [type, setType] = useState(item?.type || 'saham');
@@ -27,6 +96,11 @@ function HoldingEditor({ item, onClose }) {
   const [buy, setBuy] = useState(item ? String(item.buyPrice) : '');
   const [price, setPrice] = useState(item ? String(item.price) : '');
   const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
+  const autoName = useRef(''); // name filled from the last pick, replaced when another listing is picked
+  function pickListing(x) {
+    setSymbol(x.symbol); setErr('');
+    if (x.name && (!name.trim() || name === autoName.current)) { setName(x.name); autoName.current = x.name; }
+  }
   const auto = isLive(type, gold);
   const coded = auto && type !== 'emas'; // needs a market code typed in
   async function save() {
@@ -57,8 +131,12 @@ function HoldingEditor({ item, onClose }) {
   return (
     <Sheet open onClose={onClose} title={item ? t.pfEdit : t.pfNew} full actions={<EditActions onSave={save} onDelete={item && del} />}>
       <div className="form">
-        <Segmented label={t.type} value={type} onChange={(v) => { setType(v); setErr(''); }} options={KINDS.map((k) => ({ value: k, label: t.pfKinds[k] }))} />
-        {coded && <Field label={t.pfSymbol} hint={t.pfSymbolHint[type]}><input value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())} maxLength={20} autoCapitalize="characters" autoComplete="off" spellCheck={false} autoFocus={!item} /></Field>}
+        <Segmented label={t.type} value={type} onChange={(v) => {
+          setType(v); setErr('');
+          // A code means nothing in another market: start over, keeping a name the user typed.
+          if (v !== type) { setSymbol(''); if (name === autoName.current) { setName(''); autoName.current = ''; } }
+        }} options={KINDS.map((k) => ({ value: k, label: t.pfKinds[k] }))} />
+        {coded && <SymbolPicker key={type} type={type} value={symbol} onType={setSymbol} onPick={pickListing} hint={t.pfSymbolHint[type]} autoFocus={!item} />}
         {type === 'emas' && (
           <label className="field-row">
             <span><b>{t.pfGold}</b><small className="hint">{t.pfGoldHint}</small></span>

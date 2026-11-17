@@ -81,6 +81,39 @@ export async function fetchQuotes(symbols) {
   return out;
 }
 
+// Market listings matching what the user typed (code or company name), for the code picker.
+// Returns [{symbol, name, exchange}] with symbol in the stored form (BBCA, AAPL, SOL).
+const SEARCH_FILTER = {
+  saham: (x) => x.exchange === 'JKT' && /\.JK$/.test(x.symbol),
+  saham_luar: (x) => (x.quoteType === 'EQUITY' || x.quoteType === 'ETF') && x.exchange !== 'JKT',
+  kripto: (x) => x.quoteType === 'CRYPTOCURRENCY' && /-USD$/.test(x.symbol),
+};
+export async function searchSymbols(type, text) {
+  const q = String(text || '').trim();
+  const keep = SEARCH_FILTER[type];
+  if (q.length < 2 || !keep) return [];
+  let found;
+  if (!isNative && !import.meta.env.DEV) {
+    if (!configured) throw new Error('not_configured');
+    const r = await fetch(`${supabaseUrl}/functions/v1/quotes`, {
+      method: 'POST', signal: AbortSignal.timeout(15000),
+      headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ search: q }),
+    });
+    const data = await r.json().catch(() => null);
+    if (!r.ok || !data?.ok) throw new Error(data?.error || `http ${r.status}`);
+    found = data.results;
+  } else {
+    found = (await getJson(`/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=20&newsCount=0&listsCount=0`))?.quotes || [];
+  }
+  const seen = new Set();
+  return found.filter((x) => x?.symbol && keep(x)).map((x) => ({
+    symbol: cleanSymbol(type, x.symbol),
+    name: (x.longname || x.shortname || '').replace(/\s+USD$/, '').trim(),
+    exchange: type === 'kripto' ? '' : x.exchDisp || x.exchange || '',
+  })).filter((x) => !seen.has(x.symbol) && seen.add(x.symbol)).slice(0, 8);
+}
+
 // Current price per unit in the user's main currency for every holding that follows the market.
 // Returns { [holdingId]: {price, native, currency, changePct, time, name} }.
 export async function quoteHoldings(holdings, main) {

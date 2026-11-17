@@ -538,3 +538,11 @@ label.bill { cursor: pointer; }
 .field-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .field-row > span { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 14px; color: var(--text); }
 .field-row b { font-weight: 500; }
+.combo { position: relative; display: flex; flex-direction: column; }
+.combo-list { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 5; margin: 0; padding: 4px; list-style: none; background: var(--surface); border-radius: var(--r-sm); box-shadow: var(--e2), 0 0 0 1px var(--ring); max-height: 300px; overflow-y: auto; }
+.combo-list [role="option"] { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; gap: 10px; padding: 10px; border-radius: var(--r-sm); cursor: pointer; color: var(--text); font-size: 14px; }
+.combo-list [role="option"].on { background: var(--track); }
+.combo-list [role="option"] b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.combo-list [role="option"] span { color: var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.combo-list [role="option"] small { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.combo-msg { padding: 10px; color: var(--muted); font-size: 13px; }
