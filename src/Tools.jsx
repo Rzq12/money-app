@@ -1,60 +1,222 @@
 // Portfolio, split bill, the chat logger and the two calculators.
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { store, useStore, live, nameOf, uid, formatMoney } from './store.js';
 import { useT, useMoney, Icon, Sheet, Segmented, PageHead, Empty, AddBtn, Progress, confirmAsk } from './ui.jsx';
 import { splitTotals, kpr, pph21, parseQuick, toDateInput, fromDateInput, compressImage } from './logic.js';
 import { callAI, useAi, context, aiReason } from './ai.js';
 import { num, Field, AmountInput, EditActions } from './Money.jsx';
+import { LIVE_KINDS, GOLD, cleanSymbol, yahooSymbol, quoteHoldings, searchSymbols } from './quotes.js';
 
 const pctText = (v) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
 
-// ---------- portfolio: prices are typed in by hand, there is no live quote feed ----------
-const KINDS = ['saham', 'reksadana', 'emas'];
-function HoldingEditor({ item, onClose }) {
+// ---------- portfolio: stocks, crypto and world gold follow the market; funds are typed in by hand ----------
+const KINDS = ['saham', 'saham_luar', 'kripto', 'reksadana', 'emas'];
+const REFRESH_MS = 60_000; // while the page is open and visible
+const SAVE_EVERY_MS = 5 * 60_000; // live prices are written to the synced record at most this often
+const cents = (v) => Math.round(v * 100) / 100;
+const WHOLE = { whole: true }; // portfolio amounts without cents, so totals fit on a phone
+const isLive = (type, gold) => (type === 'emas' ? gold : LIVE_KINDS.includes(type));
+
+// Code field with suggestions from the market, so the stored code is exactly the exchange's.
+// Typing a code or company name lists matches; picking one fills the code (and the name if empty).
+function SymbolPicker({ type, value, onType, onPick, hint, autoFocus }) {
   const t = useT();
+  const [list, setList] = useState([]); const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1); const [status, setStatus] = useState('idle'); // idle | loading | empty | failed
+  const inputRef = useRef(null); const timer = useRef(null); const seq = useRef(0);
+  const id = `sym-${type}`;
+  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => { seq.current++; setList([]); setOpen(false); setStatus('idle'); }, [type]);
+  function search(text) {
+    clearTimeout(timer.current);
+    const n = ++seq.current;
+    if (text.trim().length < 2) { setList([]); setOpen(false); setStatus('idle'); return; }
+    setStatus('loading'); setOpen(true);
+    timer.current = setTimeout(async () => {
+      try {
+        const found = await searchSymbols(type, text);
+        if (n !== seq.current) return;
+        setList(found); setActive(found.length ? 0 : -1); setStatus(found.length ? 'idle' : 'empty');
+      } catch { if (n === seq.current) { setList([]); setStatus('failed'); } }
+    }, 250);
+  }
+  function pick(x) { seq.current++; onPick(x); setOpen(false); setList([]); setStatus('idle'); }
+  const keys = useRef(null);
+  keys.current = (e) => {
+    if (!open) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (list.length) setActive((a) => (a + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length);
+    } else if (e.key === 'Enter' && list[active]) { e.preventDefault(); pick(list[active]); }
+    else if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); } // close the list, not the sheet
+  };
+  // A native listener: it runs before the sheet's own Escape handler further up the tree.
+  useEffect(() => {
+    const el = inputRef.current; const k = (e) => keys.current(e);
+    el.addEventListener('keydown', k);
+    return () => el.removeEventListener('keydown', k);
+  }, []);
+  return (
+    <div className="field">
+      <label htmlFor={id}>{t.pfSymbol}</label>
+      <div className="combo">
+        <input id={id} ref={inputRef} value={value} maxLength={40} autoFocus={autoFocus}
+          autoComplete="off" autoCorrect="off" spellCheck={false}
+          role="combobox" aria-expanded={open} aria-controls={`${id}-list`} aria-autocomplete="list"
+          aria-activedescendant={open && active >= 0 && list[active] ? `${id}-${active}` : undefined}
+          onChange={(e) => { onType(e.target.value); search(e.target.value); }}
+          onFocus={() => { if (list.length) setOpen(true); }}
+          onBlur={() => setTimeout(() => setOpen(false), 150)} />
+        {open && (
+          <ul className="combo-list" role="listbox" id={`${id}-list`} aria-label={t.pfSymbol}>
+            {list.map((x, i) => (
+              <li key={x.symbol} id={`${id}-${i}`} role="option" aria-selected={i === active} className={i === active ? 'on' : ''}
+                onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setActive(i)} onClick={() => pick(x)}>
+                <b>{x.symbol}</b><span>{x.name}</span>{x.exchange && <small>{x.exchange}</small>}
+              </li>
+            ))}
+            {status === 'loading' && !list.length && <li className="combo-msg">{t.pfSearching}</li>}
+            {status === 'empty' && <li className="combo-msg">{t.pfSearchNone}</li>}
+            {status === 'failed' && <li className="combo-msg">{t.pfSearchFailed}</li>}
+          </ul>
+        )}
+      </div>
+      <small className="hint">{hint}</small>
+    </div>
+  );
+}
+
+function HoldingEditor({ item, onClose }) {
+  const t = useT(); const { settings } = useStore();
   const [type, setType] = useState(item?.type || 'saham');
+  const [symbol, setSymbol] = useState(item?.symbol && item.symbol !== GOLD ? item.symbol : (item?.type === 'saham' && /^[A-Za-z]{4}$/.test(item?.name || '') ? item.name.toUpperCase() : ''));
+  const [gold, setGold] = useState(item ? item.symbol === GOLD : true);
   const [name, setName] = useState(item?.name || '');
   const [units, setUnits] = useState(item ? String(item.units) : '');
   const [buy, setBuy] = useState(item ? String(item.buyPrice) : '');
   const [price, setPrice] = useState(item ? String(item.price) : '');
-  const [err, setErr] = useState('');
-  function save() {
-    if (!name.trim()) return setErr(t.needName);
+  const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
+  const autoName = useRef(''); // name filled from the last pick, replaced when another listing is picked
+  function pickListing(x) {
+    setSymbol(x.symbol); setErr('');
+    if (x.name && (!name.trim() || name === autoName.current)) { setName(x.name); autoName.current = x.name; }
+  }
+  const auto = isLive(type, gold);
+  const coded = auto && type !== 'emas'; // needs a market code typed in
+  async function save() {
+    if (busy) return;
+    const sym = type === 'emas' ? (gold ? GOLD : '') : coded ? cleanSymbol(type, symbol) : '';
+    if (coded && !sym) return setErr(t.pfNeedSymbol);
+    if (!auto && !name.trim()) return setErr(t.needName);
     if (!(num(units) > 0) || !(num(buy) > 0)) return setErr(t.pfNeedNumbers);
-    store.put({ id: item?.id || uid(), kind: 'holding', type, name: name.trim(), units: num(units), buyPrice: num(buy), price: num(price) || num(buy), priceAt: Date.now(), order: item?.order ?? Date.now() });
+    let q = null;
+    if (auto) {
+      setBusy(true); setErr('');
+      try {
+        q = (await quoteHoldings([{ id: 'new', type, symbol: sym }], settings.currency)).new;
+        if (!q) { setBusy(false); return setErr(t.pfNoSymbol.replace('{code}', sym)); }
+      } catch { q = null; /* offline: keep the code, the price follows on the next refresh */ }
+      setBusy(false);
+    }
+    store.put({
+      id: item?.id || uid(), kind: 'holding', type, symbol: sym || null,
+      name: name.trim() || (coded ? q?.name || sym : t.pfKinds[type]),
+      units: num(units), buyPrice: num(buy),
+      price: q ? cents(q.price) : auto ? item?.price || num(buy) : num(price) || num(buy),
+      priceAt: Date.now(), order: item?.order ?? Date.now(),
+    });
     onClose();
   }
   async function del() { if (await confirmAsk(`${t.delete}?`, { danger: true, okLabel: t.delete })) { store.remove(item.id); onClose(); } }
   return (
     <Sheet open onClose={onClose} title={item ? t.pfEdit : t.pfNew} full actions={<EditActions onSave={save} onDelete={item && del} />}>
       <div className="form">
-        <Segmented label={t.type} value={type} onChange={setType} options={KINDS.map((k) => ({ value: k, label: t.pfKinds[k] }))} />
-        <Field label={t.pfName} hint={t.pfNameHint[type]}><input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} autoFocus={!item} /></Field>
+        <Segmented label={t.type} value={type} onChange={(v) => {
+          setType(v); setErr('');
+          // A code means nothing in another market: start over, keeping a name the user typed.
+          if (v !== type) { setSymbol(''); if (name === autoName.current) { setName(''); autoName.current = ''; } }
+        }} options={KINDS.map((k) => ({ value: k, label: t.pfKinds[k] }))} />
+        {coded && <SymbolPicker key={type} type={type} value={symbol} onType={setSymbol} onPick={pickListing} hint={t.pfSymbolHint[type]} autoFocus={!item} />}
+        {type === 'emas' && (
+          <label className="field-row">
+            <span><b>{t.pfGold}</b><small className="hint">{t.pfGoldHint}</small></span>
+            <input type="checkbox" className="switch" checked={gold} onChange={(e) => setGold(e.target.checked)} />
+          </label>
+        )}
+        <Field label={auto ? t.pfNameOptional : t.pfName} hint={coded ? t.pfNameAuto : t.pfNameHint[type]}><input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} autoFocus={!item && !coded} /></Field>
         <Field label={t.pfUnits[type]}><AmountInput value={units} onChange={setUnits} /></Field>
-        <Field label={t.pfBuy}><AmountInput value={buy} onChange={setBuy} /></Field>
-        <Field label={t.pfPrice} hint={t.pfPriceHint}><AmountInput value={price} onChange={setPrice} placeholder={buy || '0'} /></Field>
+        <Field label={t.pfBuy.replace('{cur}', settings.currency)}><AmountInput value={buy} onChange={setBuy} /></Field>
+        {!auto && <Field label={t.pfPrice} hint={t.pfPriceHint}><AmountInput value={price} onChange={setPrice} placeholder={buy || '0'} /></Field>}
+        {auto && <p className="hint">{t.pfAutoPrice}</p>}
+        {busy && <p className="hint" role="status">{t.pfChecking}</p>}
         {err && <div className="err" role="alert">{err}</div>}
       </div>
     </Sheet>
   );
 }
+
+// Market prices for the holdings that follow one: fetched on open, every minute while the page
+// is visible, and on demand. The synced record keeps the last price so offline totals still work.
+function useLivePrices(list, main) {
+  const [quotes, setQuotes] = useState({});
+  const [state, setState] = useState({ busy: false, at: null, failed: false });
+  const listRef = useRef(list); listRef.current = list;
+  const key = list.map((h) => `${h.id}:${yahooSymbol(h) || ''}`).join('|');
+  const tracked = list.some((h) => yahooSymbol(h));
+  const refresh = useCallback(async (force) => {
+    const hs = listRef.current.filter((h) => yahooSymbol(h));
+    if (!hs.length) return;
+    setState((s) => ({ ...s, busy: true }));
+    try {
+      const q = await quoteHoldings(hs, main);
+      setQuotes(q); setState({ busy: false, at: Date.now(), failed: false });
+      const now = Date.now();
+      const save = hs.filter((h) => q[h.id] && cents(q[h.id].price) !== h.price && (force || now - (h.priceAt || 0) >= SAVE_EVERY_MS))
+        .map((h) => ({ id: h.id, price: cents(q[h.id].price), priceAt: now, ...(h.symbol ? {} : { symbol: cleanSymbol('saham', h.name) }) }));
+      if (save.length) store.putMany(save);
+    } catch { setState((s) => ({ ...s, busy: false, failed: true })); }
+  }, [main]);
+  useEffect(() => {
+    if (!tracked) return undefined;
+    refresh(false);
+    const tick = () => { if (!document.hidden) refresh(false); };
+    const id = setInterval(tick, REFRESH_MS);
+    document.addEventListener('visibilitychange', tick);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', tick); };
+  }, [key, tracked, refresh]);
+  return { quotes, tracked, ...state, refresh: () => refresh(true) };
+}
+
 export function Portfolio() {
-  const t = useT(); const money = useMoney(); const { records } = useStore();
+  const t = useT(); const money = useMoney(); const { records, settings } = useStore();
+  const lang = settings.lang; const loc = lang === 'id' ? 'id-ID' : 'en-US';
   const [edit, setEdit] = useState(null);
   const list = live(records, 'holding');
+  const lp = useLivePrices(list, settings.currency);
+  const priceOf = (h) => lp.quotes[h.id]?.price ?? h.price;
   const cost = list.reduce((a, h) => a + h.units * h.buyPrice, 0);
-  const value = list.reduce((a, h) => a + h.units * h.price, 0);
+  const value = list.reduce((a, h) => a + h.units * priceOf(h), 0);
   const pl = value - cost;
+  // The three stat boxes are a third of a phone wide: from 10 million on, "Rp 42,2 jt" instead of "Rp 42.156.913".
+  const statMoney = (n) => money(n, Math.abs(n) >= 1e7 ? { compact: true } : WHOLE);
+  const time = (ms) => new Date(ms).toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit' });
   return (
     <div className="page">
       <PageHead title={t.portfolio} sub={t.pfSub} action={<AddBtn label={t.add} onClick={() => setEdit({})} />} />
       {!list.length ? <Empty icon="trend" title={t.pfEmpty} hint={t.pfEmptyHint} /> : (
         <>
           <div className="stats card">
-            <div><small>{t.pfValue}</small><b>{money(value)}</b></div>
-            <div><small>{t.pfCost}</small><b>{money(cost)}</b></div>
-            <div><small>{t.pfPl}</small><b className={pl < 0 ? 'neg' : ''}>{pl >= 0 ? '+' : ''}{money(pl)}{cost > 0 ? ` (${pctText((pl / cost) * 100)})` : ''}</b></div>
+            <div><small>{t.pfValue}</small><b title={money(value, WHOLE)}>{statMoney(value)}</b></div>
+            <div><small>{t.pfCost}</small><b title={money(cost, WHOLE)}>{statMoney(cost)}</b></div>
+            <div><small>{t.pfPl}</small><b className={pl < 0 ? 'neg' : ''} title={money(pl, WHOLE)}>{pl >= 0 ? '+' : ''}{statMoney(pl)}{cost > 0 ? ` (${pctText((pl / cost) * 100)})` : ''}</b></div>
           </div>
+          {lp.tracked && (
+            <div className="live-bar" role="status">
+              <span className={`live-dot ${lp.failed ? 'off' : lp.at ? 'on' : ''}`} aria-hidden="true" />
+              <span className="hint grow">{lp.failed ? t.pfLiveFailed : lp.at ? t.pfLiveAt.replace('{time}', time(lp.at)) : t.pfLiveLoading}</span>
+              <button className="text-btn" onClick={lp.refresh} disabled={lp.busy}><Icon name="repeat" size={14} />{lp.busy ? t.pfLiveLoading : t.pfRefresh}</button>
+            </div>
+          )}
           {KINDS.map((k) => {
             const items = list.filter((h) => h.type === k);
             if (!items.length) return null;
@@ -63,13 +225,17 @@ export function Portfolio() {
                 <h2 className="sec-title">{t.pfKinds[k]}</h2>
                 <div className="card">
                   {items.map((h) => {
-                    const v = h.units * h.price; const d = v - h.units * h.buyPrice;
+                    const q = lp.quotes[h.id]; const p = priceOf(h);
+                    const v = h.units * p; const d = v - h.units * h.buyPrice;
+                    // Per-unit price in the market's own currency (US$352,78) when it differs from the main one.
+                    const unitText = q && q.currency !== settings.currency ? formatMoney(q.native, q.currency, lang) : money(p, p >= 100 ? WHOLE : undefined);
+                    const dayText = q?.changePct != null ? ` · ${pctText(q.changePct)} ${t.pfToday}` : '';
                     return (
                       <button key={h.id} className="bill" onClick={() => setEdit(h)}>
-                        <span className="bill-main"><span className="bill-title">{h.name}</span>
-                          <span className="bill-sub">{h.units.toLocaleString('id-ID')} × {money(h.price)}</span></span>
-                        <span className="bill-end"><span className="bill-amt">{money(v)}</span>
-                          <span className={`bill-sub ${d < 0 ? 'neg' : ''}`}>{d >= 0 ? '+' : ''}{money(d)} ({pctText(h.buyPrice ? (d / (h.units * h.buyPrice)) * 100 : 0)})</span></span>
+                        <span className="bill-main"><span className="bill-title">{h.name}{h.symbol && h.symbol !== GOLD && h.symbol !== h.name ? ` · ${h.symbol}` : ''}</span>
+                          <span className="bill-sub">{h.units.toLocaleString(loc, { maximumFractionDigits: 8 })} × {unitText}{dayText}</span></span>
+                        <span className="bill-end"><span className="bill-amt">{money(v, WHOLE)}</span>
+                          <span className={`bill-sub ${d < 0 ? 'neg' : ''}`}>{d >= 0 ? '+' : ''}{money(d, WHOLE)} ({pctText(h.buyPrice ? (d / (h.units * h.buyPrice)) * 100 : 0)})</span></span>
                       </button>
                     );
                   })}
