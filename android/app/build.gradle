@@ -7,8 +7,9 @@ android {
         applicationId "com.kasku.plus"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // The release workflow passes these from the git tag (v1.2.3 -> name 1.2.3, code 10203).
+        versionCode((project.findProperty('versionCode') ?: '1') as int)
+        versionName((project.findProperty('versionName') ?: '1.0') as String)
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +17,22 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Release signing key, supplied by CI (.github/workflows/release.yml) through environment variables.
+    // Every release must be signed with the same key, or Android refuses to install it as an update.
+    def releaseKeystore = System.getenv('KASKU_KEYSTORE_FILE')
+    signingConfigs {
+        release {
+            if (releaseKeystore) {
+                storeFile file(releaseKeystore)
+                storePassword System.getenv('KASKU_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('KASKU_KEY_ALIAS')
+                keyPassword System.getenv('KASKU_KEY_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
+            if (releaseKeystore) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
