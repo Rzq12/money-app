@@ -27,7 +27,7 @@ const KINDS = {
   recurring: { table: 'recurring', cols: [['type', 'type'], ['amount', 'amount', 'num'], ['bookId', 'book_id'], ['accountId', 'account_id'], ['toAccountId', 'to_account_id'], ['categoryId', 'category_id'], ['memberId', 'member_id'], ['note', 'note'], ['freq', 'freq'], ['next', 'next_at', 'time'], ['day', 'day', 'num'], ['active', 'active', null, true]] },
   rule: { table: 'rules', cols: [['keyword', 'keyword'], ['categoryId', 'category_id'], ['order', 'sort', 'num', 0]] },
   budget: { table: 'budgets', cols: [['bookId', 'book_id'], ['categoryId', 'category_id'], ['amount', 'amount', 'num'], ['period', 'period', null, 'month'], ['start', 'start_at', 'time'], ['end', 'end_at', 'time']] },
-  holding: { table: 'holdings', cols: [['type', 'type'], ['name', 'name'], ['units', 'units', 'num'], ['buyPrice', 'buy_price', 'num'], ['price', 'price', 'num'], ['priceAt', 'price_at', 'num'], ['order', 'sort', 'num', 0]] },
+  holding: { table: 'holdings', cols: [['type', 'type'], ['name', 'name'], ['symbol', 'symbol'],['units', 'units', 'num'], ['buyPrice', 'buy_price', 'num'], ['price', 'price', 'num'], ['priceAt', 'price_at', 'num'], ['order', 'sort', 'num', 0]] },
   debt: {
     table: 'debts', cols: [['dir', 'dir'], ['person', 'person'], ['amount', 'amount', 'num'], ['note', 'note'], ['due', 'due', 'time'], ['time', 'time', 'time']],
     children: [{ table: 'debt_payments', fk: 'debt_id', rows: (r) => (r.payments || []).map((p, idx) => ({ idx, amount: p.amount, time: time(p.time) })), fold: (rec, rows) => { rec.payments = rows.sort((a, b) => a.idx - b.idx).map((p) => ({ amount: Number(p.amount), time: untime(p.time) })); } }],

@@ -528,3 +528,13 @@ label.bill { cursor: pointer; }
 .proposal.dismissed > span:first-child { color: var(--muted); text-decoration: line-through; }
 .summary-text { margin: 0; line-height: 22px; max-width: 68ch; }
 .ai-sends { margin: 0; padding-left: 18px; color: var(--body); display: flex; flex-direction: column; gap: 4px; }
+
+/* ---------- portfolio live prices ---------- */
+.live-bar { display: flex; align-items: center; gap: 8px; margin: 12px 16px 0; min-height: 32px; }
+.live-bar .hint { font-size: 12px; line-height: 16px; }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--muted); }
+.live-dot.on { background: var(--inc-text, #29bc9b); box-shadow: 0 0 0 3px color-mix(in srgb, var(--inc-text, #29bc9b) 25%, transparent); }
+.live-dot.off { background: var(--exp-text); }
+.field-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.field-row > span { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 14px; color: var(--text); }
+.field-row b { font-weight: 500; }
