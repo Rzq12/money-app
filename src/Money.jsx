@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { store, useStore, live, nameOf, uid, formatMoney } from './store.js';
 import { useT, useMoney, CatIcon, Icon, Sheet, Segmented, PageHead, Empty, AddBtn, Progress, confirmAsk } from './ui.jsx';
-import { budgetSpent, goalSaved, parseNumber, toDateInput, fromDateInput, nextDate, runRecurring } from './logic.js';
+import { budgetSpent, goalSaved, parseNumber, toDateInput, fromDateInput, nextAfter, runRecurring, hasRate } from './logic.js';
 
 export const num = (s) => { const n = parseNumber(s); return Number.isNaN(n) ? 0 : n; };
 export function Field({ label, hint, children }) {
@@ -340,7 +340,12 @@ function RecurringEditor({ item, onClose }) {
   const cat = records[categoryId]?.type === catType ? categoryId : live(records, 'category').find((c) => c.type === catType)?.id;
   function save() {
     if (!(num(amount) > 0)) return setErr(t.enterAmount);
+    if (type === 'transfer' && (!toAccountId || !records[toAccountId] || records[toAccountId].deleted)) return setErr(t.needToAccount);
     if (type === 'transfer' && accountId === toAccountId) return setErr(t.sameAccount);
+    if (type === 'transfer') {
+      const miss = [records[accountId]?.currency, records[toAccountId]?.currency].find((c) => !hasRate(records, c, settings.currency));
+      if (miss && records[accountId]?.currency !== records[toAccountId]?.currency) return setErr(t.needRate.replace('{code}', miss));
+    }
     const next = fromDateInput(start, 9);
     store.put({ id: item?.id || uid(), kind: 'recurring', type, amount: num(amount), categoryId: type === 'transfer' ? null : cat, accountId,
       toAccountId: type === 'transfer' ? toAccountId : null, note: note.trim(), freq, next, day: new Date(next).getDate(), bookId: settings.bookId, active: item?.active ?? true });
@@ -388,7 +393,7 @@ export function Recurring() {
                   <span className={`bill-amt ${r.type}`}>{r.type === 'expense' ? '-' : r.type === 'income' ? '+' : ''}{formatMoney(r.amount, acc?.currency || settings.currency, lang)}</span>
                 </button>
                 <input type="checkbox" className="switch" aria-label={t.recActive} checked={!!r.active}
-                  onChange={(e) => { store.put({ id: r.id, active: e.target.checked, next: e.target.checked && r.next < Date.now() ? nextDate(Date.now() - 86400000, 'daily') : r.next }); }} />
+                  onChange={(e) => { store.put({ id: r.id, active: e.target.checked, next: e.target.checked && r.next ? nextAfter(r.next, r.freq, r.day) : r.next }); }} />
               </div>
             );
           })}

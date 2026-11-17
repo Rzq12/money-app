@@ -6,6 +6,7 @@ import { DEFAULT_ICONS, ICON_MAP } from './icons.js';
 const REC_KEY = 'kasku.v1.records';
 const SET_KEY = 'kasku.v1.settings';
 const DIRTY_KEY = 'kasku.v1.dirty';
+export const CHAT_KEY = 'kasku.v1.chat';
 
 // Icons are keys into the drawn set in icons.js (bolt 001); DEFAULT_ICONS holds the built-in choices.
 const CI = DEFAULT_ICONS.categories; const WI = DEFAULT_ICONS.walletTypes; const MI = DEFAULT_ICONS.members;
@@ -70,8 +71,18 @@ const defaultSettings = {
   lastAccountId: 'acc-cash',
 };
 
+// Keys whose saved copy could not be read at start-up. The unreadable text is kept under
+// "<key>.unreadable-<time>" so it is never overwritten by the next save.
+export const loadErrors = [];
 function load(key, fallback) {
-  try { const v = JSON.parse(localStorage.getItem(key)); return v ?? fallback; } catch { return fallback; }
+  let raw = null;
+  try { raw = localStorage.getItem(key); } catch { return fallback; }
+  if (raw == null) return fallback;
+  try { return JSON.parse(raw) ?? fallback; } catch {
+    try { localStorage.setItem(`${key}.unreadable-${Date.now()}`, raw); } catch { /* storage full: the copy below still stays untouched until the user saves */ }
+    loadErrors.push(key);
+    return fallback;
+  }
 }
 
 let state = {
@@ -83,11 +94,23 @@ if (state.settings.themeV !== 2 || !ACCENTS.includes(state.settings.theme)) stat
 let dirty = new Set(load(DIRTY_KEY, []));
 const listeners = new Set();
 const changeHooks = new Set();
+const errorHooks = new Set();
 
-function persist() {
-  localStorage.setItem(REC_KEY, JSON.stringify(state.records));
-  localStorage.setItem(SET_KEY, JSON.stringify(state.settings));
-  localStorage.setItem(DIRTY_KEY, JSON.stringify([...dirty]));
+function write(s, d) {
+  localStorage.setItem(REC_KEY, JSON.stringify(s.records));
+  localStorage.setItem(SET_KEY, JSON.stringify(s.settings));
+  localStorage.setItem(DIRTY_KEY, JSON.stringify([...d]));
+}
+// A change reaches the screen only after it is on disk. When the device storage is full the old
+// copy stays both on disk and in memory, and the error hooks tell the user nothing was saved.
+function commit(nextState, nextDirty) {
+  try { write(nextState, nextDirty); } catch (e) {
+    try { write(state, dirty); } catch { /* the keys that failed still hold the old copy */ }
+    errorHooks.forEach((f) => f(e));
+    return false;
+  }
+  state = nextState; dirty = nextDirty;
+  return true;
 }
 function emit() { listeners.forEach((l) => l()); }
 
@@ -95,45 +118,52 @@ export const store = {
   get: () => state,
   subscribe(l) { listeners.add(l); return () => listeners.delete(l); },
   onLocalChange(fn) { changeHooks.add(fn); return () => changeHooks.delete(fn); },
+  onError(fn) { errorHooks.add(fn); return () => errorHooks.delete(fn); },
   dirtyIds: () => [...dirty],
-  clearDirty(ids) { ids.forEach((i) => dirty.delete(i)); persist(); },
+  clearDirty(ids) { const d = new Set(dirty); ids.forEach((i) => d.delete(i)); commit(state, d); },
 
-  put(rec) {
-    const next = { ...state.records[rec.id], ...rec, updatedAt: Date.now() };
-    state = { ...state, records: { ...state.records, [rec.id]: next } };
-    dirty.add(rec.id);
-    persist(); emit(); changeHooks.forEach((f) => f());
+  // Returns the saved record, or null when it could not be written. `at` sets updatedAt instead of
+  // now, for writes that must not win over a newer edit made on another device.
+  put(rec, { at } = {}) {
+    const next = { ...state.records[rec.id], ...rec, updatedAt: at ?? Date.now() };
+    const d = new Set(dirty); d.add(rec.id);
+    if (!commit({ ...state, records: { ...state.records, [rec.id]: next } }, d)) return null;
+    emit(); changeHooks.forEach((f) => f());
     return next;
   },
-  remove(id) { if (state.records[id]) store.put({ id, deleted: true }); },
+  remove(id) { return state.records[id] ? store.put({ id, deleted: true }) : null; },
   setSettings(patch) {
-    state = { ...state, settings: { ...state.settings, ...patch } };
-    persist(); emit();
+    if (!commit({ ...state, settings: { ...state.settings, ...patch } }, dirty)) return false;
+    emit(); return true;
   },
   // Merge records coming from the cloud or a backup: newest updatedAt wins.
   merge(incoming, { markDirty = false } = {}) {
-    const recs = { ...state.records };
+    const recs = { ...state.records }; const d = new Set(dirty);
     let changed = false;
     for (const r of incoming) {
       const cur = recs[r.id];
       if (!cur || (r.updatedAt || 0) > (cur.updatedAt || 0)) {
         recs[r.id] = r; changed = true;
-        if (markDirty) dirty.add(r.id); else dirty.delete(r.id);
+        if (markDirty) d.add(r.id); else d.delete(r.id);
       }
     }
-    if (changed) { state = { ...state, records: recs }; persist(); emit(); }
-    return changed;
+    if (!changed || !commit({ ...state, records: recs }, d)) return false;
+    emit(); return true;
   },
-  // Several records in one notification (imports, clean-ups).
-  putMany(recs) {
-    const next = { ...state.records }; const now = Date.now();
-    for (const rec of recs) { next[rec.id] = { ...next[rec.id], ...rec, updatedAt: now }; dirty.add(rec.id); }
-    state = { ...state, records: next };
-    persist(); emit(); changeHooks.forEach((f) => f());
+  // Several records in one notification (imports, clean-ups, price updates). keepTime leaves each
+  // record's updatedAt as it was, so a background refresh never wins over an edit from another device.
+  putMany(recs, { keepTime = false } = {}) {
+    const next = { ...state.records }; const now = Date.now(); const d = new Set(dirty);
+    for (const rec of recs) { const old = next[rec.id]; next[rec.id] = { ...old, ...rec, updatedAt: keepTime && old ? old.updatedAt || 0 : now }; d.add(rec.id); }
+    if (!commit({ ...state, records: next }, d)) return false;
+    emit(); changeHooks.forEach((f) => f());
+    return true;
   },
+  // Also forgets this device's chat history, which may belong to the account being signed out.
   resetAll() {
-    state = { records: defaultRecords(), settings: { ...defaultSettings, lang: state.settings.lang } };
-    dirty = new Set(); persist(); emit();
+    try { localStorage.removeItem(CHAT_KEY); } catch { /* nothing to forget */ }
+    commit({ records: defaultRecords(), settings: { ...defaultSettings, lang: state.settings.lang } }, new Set());
+    emit();
   },
 };
 
@@ -152,11 +182,15 @@ export const nameOf = (r, lang) => (r ? r.name || r.names?.[lang] || r.names?.id
 
 export function accountBalances(records) {
   const bal = {};
-  // Balances stay in each account's own currency; a transfer between currencies converts at the saved rates.
+  // Balances stay in each account's own currency; a transfer between currencies converts at the saved
+  // rates. Without a rate for both sides the receiving account is not credited (the app asks for the
+  // rate before saving such a transfer), so an amount is never taken 1:1 across currencies.
   const base = state.settings.currency;
+  const cur = (accId) => records[accId]?.currency || base;
   const rate = (accId) => {
-    const c = records[accId]?.currency; const r = records[`rate-${c}`];
-    return !c || c === base || !r || r.deleted || !(r.rate > 0) ? 1 : Number(r.rate);
+    const c = cur(accId); if (c === base) return 1;
+    const r = records[`rate-${c}`];
+    return r && !r.deleted && r.rate > 0 ? Number(r.rate) : null;
   };
   for (const a of live(records, 'account')) bal[a.id] = Number(a.initBalance) || 0;
   for (const b of live(records, 'bill')) {
@@ -165,7 +199,10 @@ export function accountBalances(records) {
     else if (b.type === 'income') bal[b.accountId] = (bal[b.accountId] || 0) + amt;
     else if (b.type === 'transfer') {
       bal[b.accountId] = (bal[b.accountId] || 0) - amt;
-      bal[b.toAccountId] = (bal[b.toAccountId] || 0) + amt * rate(b.accountId) / rate(b.toAccountId);
+      if (!b.toAccountId) continue;
+      const from = rate(b.accountId); const to = rate(b.toAccountId);
+      const into = cur(b.accountId) === cur(b.toAccountId) ? amt : from && to ? amt * from / to : null;
+      if (into != null) bal[b.toAccountId] = (bal[b.toAccountId] || 0) + into;
     }
   }
   return bal;

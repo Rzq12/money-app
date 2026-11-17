@@ -1,7 +1,25 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { dict } from './i18n.js';
 import { useStore, formatMoney, firstDayOfWeek, store } from './store.js';
-import { billBase } from './logic.js';
+import { billBase, dayKeyOf } from './logic.js';
+
+// The period anchor of a screen that opens on "now". Until the user moves to another period it follows
+// the clock, so "today" and "this month" roll over at midnight even while the app stays open.
+export function useLiveAnchor() {
+  const [st, setSt] = useState(() => ({ at: Date.now(), follow: true }));
+  useEffect(() => {
+    if (!st.follow) return undefined;
+    const check = () => { const now = Date.now(); if (dayKeyOf(now) !== dayKeyOf(st.at)) setSt({ at: now, follow: true }); };
+    const id = setInterval(check, 60_000);
+    document.addEventListener('visibilitychange', check);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', check); };
+  }, [st]);
+  const set = useCallback((v) => setSt((s) => {
+    const at = typeof v === 'function' ? v(s.at) : v;
+    return { at, follow: dayKeyOf(at) === dayKeyOf(Date.now()) };
+  }), []);
+  return [st.at, set];
+}
 import { pushDialog } from './native.js';
 import { iconShapes, iconName, iconsByGroup, ICON_GROUPS, DEFAULT_ICONS } from './icons.js';
 

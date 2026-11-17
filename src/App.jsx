@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { useStore } from './store.js';
-import { LangCtx, useT, Icon, Logo, ConfirmHost } from './ui.jsx';
+import React, { useEffect, useRef, useState } from 'react';
+import { useStore, store, loadErrors } from './store.js';
+import { LangCtx, useT, Icon, Logo, ConfirmHost, notify } from './ui.jsx';
 import { runRecurring } from './logic.js';
 import Ledger from './Ledger.jsx';
 import Analysis from './Analysis.jsx';
 import { SyncBadge, AuthScreen } from './More.jsx';
-import { useSync } from './sync.js';
+import { useSync, afterFirstSync } from './sync.js';
 import { setStatusBar } from './native.js';
 import BillEditor from './BillEditor.jsx';
 import { Budgets, Goals, Debts, Recurring, Rules } from './Money.jsx';
@@ -28,6 +28,8 @@ function readRoute() {
   return { path, tab: new URLSearchParams(q).get('tab') };
 }
 
+const INK = '#171717';
+
 // Text colour for the accent: whichever of white or ink contrasts more.
 function onColor(hex) {
   const [r, g, b] = [1, 3, 5].map((i) => {
@@ -44,21 +46,28 @@ function Shell() {
   const [route, setRoute] = useState(readRoute);
   const [editor, setEditor] = useState(null); // {bill?, time?}
   const [installPrompt, setInstallPrompt] = useState(null);
+  const tRef = useRef(t); tRef.current = t;
 
   useEffect(() => {
     const h = () => { setRoute(readRoute()); window.scrollTo(0, 0); };
     window.addEventListener('hashchange', h);
     const p = (e) => { e.preventDefault(); setInstallPrompt(e); };
     window.addEventListener('beforeinstallprompt', p);
-    // Recurring bills that came due while the app was closed or in the background.
-    const due = () => { if (!document.hidden) runRecurring(); };
-    due(); document.addEventListener('visibilitychange', due);
-    return () => { window.removeEventListener('hashchange', h); window.removeEventListener('beforeinstallprompt', p); document.removeEventListener('visibilitychange', due); };
+    // Recurring bills that came due while the app was closed or in the background. The first run waits
+    // for the first sync, so a schedule paused or a bill deleted on another device is seen first.
+    let alive = true;
+    const due = () => { if (alive && !document.hidden) runRecurring(); };
+    afterFirstSync(() => { if (!alive) return; due(); document.addEventListener('visibilitychange', due); });
+    const offErr = store.onError(() => notify(tRef.current.storageFull));
+    if (loadErrors.length) { loadErrors.length = 0; notify(tRef.current.storageRecovered); }
+    return () => { alive = false; offErr(); window.removeEventListener('hashchange', h); window.removeEventListener('beforeinstallprompt', p); document.removeEventListener('visibilitychange', due); };
   }, []);
   useEffect(() => {
     const r = document.documentElement;
-    r.style.setProperty('--accent', settings.theme);
-    r.style.setProperty('--on-accent', onColor(settings.theme));
+    // The ink accent would vanish on the black dark background; it turns light ink there.
+    const accent = settings.dark && settings.theme === INK ? '#ededed' : settings.theme;
+    r.style.setProperty('--accent', accent);
+    r.style.setProperty('--on-accent', onColor(accent));
     r.dataset.theme = settings.dark ? 'dark' : 'light';
     r.lang = settings.lang;
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', settings.dark ? '#000000' : '#fafafa');

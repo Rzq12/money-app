@@ -8,6 +8,8 @@ import { download } from './More.jsx';
 import { callAI, context } from './ai.js';
 import { billTitle } from './Ledger.jsx';
 
+// Local wall-clock time, as the user saw it when recording ("2026-11-18 00:30").
+const localStamp = (ms) => { const d = new Date(ms); const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
 const dateText = (ms, lang) => new Date(ms).toLocaleDateString(lang === 'id' ? 'id-ID' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' });
 
 export function ImportPage() {
@@ -16,27 +18,31 @@ export function ImportPage() {
   const [text, setText] = useState('');
   const [cands, setCands] = useState(null); // [{...bill fields, on, dup}]
   const [info, setInfo] = useState(null); // {ok} | {err}
+  // Each preview gets a run number; AI answers for an older preview (imported or cancelled) are dropped.
+  const run = useRef(0);
   const bills = useMemo(() => live(records, 'bill').filter((b) => (b.bookId || 'book-default') === settings.bookId), [records, settings.bookId]);
   const groups = useMemo(() => findDuplicates(bills), [bills]);
 
   async function show({ list, skipped }, source) {
+    const me = ++run.current;
     const seen = new Set(bills.map(looseKey));
-    const rows = list.filter((c) => c.categoryId && c.accountId && c.amount > 0).map((c) => {
-      const k = looseKey(c); const dup = seen.has(k); seen.add(k);
-      return { ...c, dup, on: !dup };
+    const rows = list.filter((c) => c.categoryId && c.accountId && c.amount > 0).map((c, k) => {
+      const lk = looseKey(c); const dup = seen.has(lk); seen.add(lk);
+      return { ...c, key: k, dup, on: !dup };
     });
     setCands(rows.length ? rows : null);
+    setInfo(rows.length ? { ok: t.impFound.replace('{n}', rows.length).replace('{s}', skipped + list.length - rows.length) } : { err: source === 'text' ? t.impNoText : t.impNoRows });
     // Rows no rule or name explained go to AI in batches of 50; a failure keeps the default category.
+    // Answers only change the category of rows still on screen, never the user's ticks.
     const guessed = rows.filter((c) => c.guessed);
     for (let i = 0; i < guessed.length; i += 50) {
       const part = guessed.slice(i, i + 50);
-      try {
-        const { ids } = await callAI('categorize', { notes: part.map((c) => ({ note: c.note, type: c.type })), categories: context().categories });
-        part.forEach((c, j) => { if (ids[j]) { c.categoryId = ids[j]; c.ai = true; } });
-        setCands([...rows]);
-      } catch { break; }
+      let ids;
+      try { ({ ids } = await callAI('categorize', { notes: part.map((c) => ({ note: c.note, type: c.type })), categories: context().categories })); } catch { break; }
+      if (run.current !== me) return;
+      const byKey = new Map(part.map((c, j) => [c.key, ids[j]]));
+      setCands((list2) => list2 && list2.map((c) => (byKey.get(c.key) ? { ...c, categoryId: byKey.get(c.key), ai: true } : c)));
     }
-    setInfo(rows.length ? { ok: t.impFound.replace('{n}', rows.length).replace('{s}', skipped + list.length - rows.length) } : { err: source === 'text' ? t.impNoText : t.impNoRows });
   }
   async function onFile(e) {
     const f = e.target.files?.[0]; e.target.value = '';
@@ -50,7 +56,8 @@ export function ImportPage() {
   }
   function doImport() {
     const now = Date.now(); const picked = cands.filter((c) => c.on);
-    store.putMany(picked.map(({ on, dup, guessed, ai, ...c }) => ({ ...c, id: uid(), kind: 'bill', bookId: settings.bookId, memberId: 'mem-me', toAccountId: null, createdAt: now })));
+    run.current++;
+    if (!store.putMany(picked.map(({ on, dup, guessed, ai, key, ...c }) => ({ ...c, id: uid(), kind: 'bill', bookId: settings.bookId, memberId: 'mem-me', toAccountId: null, createdAt: now })))) return;
     setCands(null); setText(''); setInfo({ ok: t.impDone.replace('{n}', picked.length) });
   }
   async function clean(group) {
@@ -79,9 +86,9 @@ export function ImportPage() {
         <section>
           <h2 className="sec-title">{t.impPreview}</h2>
           <div className="card">
-            {cands.map((c, i) => (
-              <label key={i} className="bill">
-                <input type="checkbox" className="check-in" checked={c.on} onChange={(e) => setCands(cands.map((x, j) => (j === i ? { ...x, on: e.target.checked } : x)))} />
+            {cands.map((c) => (
+              <label key={c.key} className="bill">
+                <input type="checkbox" className="check-in" checked={c.on} onChange={(e) => { const on = e.target.checked; setCands((list2) => list2.map((x) => (x.key === c.key ? { ...x, on } : x))); }} />
                 <span className="bill-main">
                   <span className="bill-title">{c.note || nameOf(records[c.categoryId], lang)}</span>
                   <span className="bill-sub">{dateText(c.time, lang)} · {nameOf(records[c.categoryId], lang)} · {nameOf(records[c.accountId], lang)}{c.dup ? ` · ${t.impDup}` : ''}{c.ai ? ` · ${t.impAiCat}` : ''}</span>
@@ -91,7 +98,7 @@ export function ImportPage() {
             ))}
           </div>
           <div className="btn-row gut"><button className="btn primary" disabled={!picked} onClick={doImport}>{t.impDo.replace('{n}', picked)}</button>
-            <button className="btn" onClick={() => { setCands(null); setInfo(null); }}>{t.cancel}</button></div>
+            <button className="btn" onClick={() => { run.current++; setCands(null); setInfo(null); }}>{t.cancel}</button></div>
         </section>
       )}
 
@@ -120,10 +127,12 @@ export function BackupPage() {
   function exportCsv() {
     const rows = [['date', 'type', 'category', 'account', 'to_account', 'member', 'amount', 'note', 'tags']];
     for (const b of live(records, 'bill').sort((a, c) => a.time - c.time)) {
-      rows.push([new Date(b.time).toISOString(), b.type, b.type === 'transfer' ? '' : billTitle(b, records, settings.lang, t), nameOf(records[b.accountId], settings.lang),
+      rows.push([localStamp(b.time), b.type, b.type === 'transfer' ? '' : billTitle(b, records, settings.lang, t), nameOf(records[b.accountId], settings.lang),
         b.toAccountId ? nameOf(records[b.toAccountId], settings.lang) : '', nameOf(records[b.memberId], settings.lang), b.amount, b.note || '', (b.tags || []).join(' ')]);
     }
-    const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    // Text starting with = + - @ would run as a formula in a spreadsheet; a leading ' keeps it text.
+    const cell = (c) => { const v = typeof c === 'string' && /^[=+\-@\t\r]/.test(c) ? `'${c}` : String(c); return `"${v.replace(/"/g, '""')}"`; };
+    const csv = rows.map((r) => r.map(cell).join(',')).join('\n');
     download(new Blob(['﻿' + csv], { type: 'text/csv' }), `kasku-${stamp}.csv`);
   }
   const Row = ({ icon, label, hint, onClick }) => (
@@ -134,7 +143,7 @@ export function BackupPage() {
     <div className="page">
       <PageHead title={t.backup} sub={t.backupSub} />
       <div className="card">
-        <Row icon="download" label={t.exportBackup} hint={t.exportBackupHint} onClick={() => download(backupBlob(), `kasku-backup-${stamp}.json`)} />
+        <Row icon="download" label={t.exportBackup} hint={t.exportBackupHint} onClick={async () => download(await backupBlob(), `kasku-backup-${stamp}.json`)} />
         <Row icon="upload" label={t.importBackup} hint={t.importBackupHint} onClick={() => fileRef.current?.click()} />
         <Row icon="file" label={t.exportCsv} hint={t.exportCsvHint} onClick={exportCsv} />
         <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={async (e) => {

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useStore, live, nameOf } from './store.js';
-import { useT, useMoney, useBase, useTween, CatIcon, PeriodNav, Segmented, periodRange, Empty } from './ui.jsx';
-import { callAI, aiReason, getSummary } from './ai.js';
+import { useT, useMoney, useBase, useTween, useLiveAnchor, CatIcon, PeriodNav, Segmented, periodRange, Empty } from './ui.jsx';
+import { callAI, aiReason, getSummary, useAi } from './ai.js';
 import { toDateInput } from './logic.js';
 
 // Written summary of one month, stored per month on the server so reopening costs no AI call.
@@ -54,16 +54,18 @@ function Donut({ parts, total, label, money }) {
 }
 
 export default function Analysis() {
-  const t = useT(); const money = useMoney(); const base = useBase(); const { records, settings } = useStore(); const lang = settings.lang;
+  const t = useT(); const money = useMoney(); const base = useBase(); const { records, settings } = useStore(); const lang = settings.lang; const ai = useAi();
   const [unit, setUnit] = useState('month');
-  const [anchor, setAnchor] = useState(() => Date.now());
+  const [anchor, setAnchor] = useLiveAnchor();
   const [kind, setKind] = useState('expense');
   const [dim, setDim] = useState('category');
   const [s, e] = periodRange(unit, anchor);
   const bills = live(records, 'bill').filter((b) => (b.bookId || 'book-default') === settings.bookId && b.type === kind && b.time >= s.getTime() && b.time < e.getTime());
   const total = bills.reduce((a, b) => a + base(b), 0);
   const totalA = useTween(total);
-  const days = Math.max(1, Math.round((Math.min(e.getTime(), Date.now()) - s.getTime()) / 86400000) || 1);
+  // Days so far, today included: a period that is still running counts up to the end of today.
+  const today = new Date(); const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).getTime();
+  const days = Math.max(1, Math.round((Math.min(e.getTime(), endOfToday) - s.getTime()) / 86400000));
 
   const parts = useMemo(() => {
     const m = new Map();
@@ -91,7 +93,7 @@ export default function Analysis() {
     }
     for (const b of bills) {
       const d = new Date(b.time);
-      const i = unit === 'year' ? d.getMonth() : Math.floor((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - s) / 86400000);
+      const i = unit === 'year' ? d.getMonth() : Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - s) / 86400000);
       if (buckets[i]) buckets[i].v += base(b);
     }
     return buckets;
@@ -118,7 +120,7 @@ export default function Analysis() {
             <div><small>{t.count}</small><b>{bills.length}</b></div>
           </div>
 
-          {unit === 'month' && <MonthSummary anchor={anchor} />}
+          {unit === 'month' && !ai.off && <MonthSummary anchor={anchor} />}
 
           <div className="split even">
             <div className="split-a">

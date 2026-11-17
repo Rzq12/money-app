@@ -2,6 +2,7 @@
 // The device keeps a full copy for offline use; local changes queue in the store's dirty set.
 import { useSyncExternalStore } from 'react';
 import { store } from './store.js';
+import { putPhoto, getPhoto } from './logic.js';
 
 const SUPA_URL = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/+$/, '');
 const SUPA_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
@@ -11,6 +12,9 @@ export const supabaseKey = SUPA_KEY;
 
 const CFG_KEY = 'kasku.v2.sync';
 const PAGE = 1000;
+// Each pull starts this far before the saved cursor: a row whose transaction committed late carries
+// an earlier server_ts than rows already pulled, and would otherwise be skipped for good.
+const OVERLAP_MS = 60_000;
 
 // ---------- record kind <-> table mapping ----------
 // [record field, column, conversion, default sent when the field is empty]
@@ -140,6 +144,14 @@ export async function signOut() {
   setStatus({ phase: 'off', error: '' });
 }
 
+// "Erase all data" while signed in: empties this device and downloads the cloud copy again.
+export function resetLocal() {
+  store.resetAll();
+  cfg = { ...cfg, cursors: {}, lastSync: null, settingsAt: 0, settingsDirty: false };
+  saveCfg(); setStatus({});
+  if (cfg.session) syncNow();
+}
+
 // Refreshes the access token a minute before it expires.
 export async function ensureToken() {
   if (!cfg.session) return false;
@@ -168,6 +180,14 @@ store.subscribe(() => {
 });
 
 // ---------- sync ----------
+// Work that must see the cloud copy first (recurring bills) waits for the first sync attempt of this
+// app session; a failed or offline attempt also releases it, so the app keeps working offline.
+let firstDone = false; const firstWaiters = [];
+export function afterFirstSync(fn) {
+  if (firstDone || !configured || !cfg.session) fn(); else firstWaiters.push(fn);
+}
+function releaseFirst() { if (!firstDone) { firstDone = true; firstWaiters.splice(0).forEach((f) => f()); } }
+
 let running = null; let again = false;
 export function syncNow() {
   if (running) { again = true; return running; }
@@ -178,14 +198,19 @@ export function syncNow() {
 async function pullTable(table) {
   const rows = [];
   let cursor = cfg.cursors[table] || null;
+  const from = cursor ? Date.parse(cursor) - OVERLAP_MS : NaN;
+  let after = Number.isNaN(from) ? cursor : new Date(from).toISOString();
   for (;;) {
-    const page = await api(`/rest/v1/${table}?select=*&order=server_ts.asc&limit=${PAGE}${cursor ? `&server_ts=gt.${encodeURIComponent(cursor)}` : ''}`);
+    const page = await api(`/rest/v1/${table}?select=*&order=server_ts.asc&limit=${PAGE}${after ? `&server_ts=gt.${encodeURIComponent(after)}` : ''}`);
     rows.push(...page);
-    if (page.length) cursor = page[page.length - 1].server_ts;
+    if (page.length) { cursor = page[page.length - 1].server_ts; after = cursor; }
     if (page.length < PAGE) break;
   }
   return { rows, cursor };
 }
+// Same content, ignoring updatedAt; empty values (null, '', false, []) count as equal.
+const blank = (v) => v == null || v === '' || v === false || (Array.isArray(v) && !v.length);
+const sameContent = (a, b) => Object.keys(b).every((k) => k === 'updatedAt' || (blank(a[k]) && blank(b[k])) || JSON.stringify(a[k]) === JSON.stringify(b[k]));
 
 async function pull() {
   const next = {};
@@ -211,9 +236,12 @@ async function pull() {
     incoming.push(...recs.values());
   }
   // A child-only change arrives with the parent's own updatedAt; nudge it so merge accepts it.
-  store.merge(incoming.map((r) => {
+  // Rows pulled again by the overlap window carry nothing new and are left out.
+  const dirtyNow = new Set(store.dirtyIds());
+  store.merge(incoming.flatMap((r) => {
     const cur = store.get().records[r.id];
-    return cur && Math.round(cur.updatedAt) === r.updatedAt && !store.dirtyIds().includes(r.id) ? { ...r, updatedAt: cur.updatedAt + 0.001 } : r;
+    if (!cur || Math.round(cur.updatedAt) !== r.updatedAt || dirtyNow.has(r.id)) return [r];
+    return sameContent(cur, r) ? [] : [{ ...r, updatedAt: cur.updatedAt + 0.001 }];
   }));
 
   const s = (await api('/rest/v1/user_settings?select=*'))?.[0];
@@ -245,28 +273,50 @@ async function push() {
     const list = ids.map((id) => recs[id]).filter((r) => r.kind === kind);
     for (let i = 0; i < list.length; i += 200) {
       const chunk = list.slice(i, i + 200);
-      await api(`/rest/v1/${spec.table}?on_conflict=user_id,id`, {
-        method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: chunk.map((r) => toRow(r, spec, userId)),
+      // The server keeps a row whose updated_at is newer than the one sent (kasku_lww trigger) and
+      // leaves it out of the reply. Those records take the server copy; only written rows get children.
+      const written = await api(`/rest/v1/${spec.table}?on_conflict=user_id,id&select=id`, {
+        method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=representation' }, body: chunk.map((r) => toRow(r, spec, userId)),
       });
+      const ok = new Set((Array.isArray(written) ? written : []).map((x) => x.id));
+      const lost = chunk.filter((r) => !ok.has(r.id));
+      if (lost.length) store.merge(await fetchByIds(kind, lost.map((r) => r.id)));
+      const kept = chunk.filter((r) => ok.has(r.id));
       for (const ch of spec.children || []) {
-        for (let j = 0; j < chunk.length; j += 100) {
-          const part = chunk.slice(j, j + 100);
+        for (let j = 0; j < kept.length; j += 100) {
+          const part = kept.slice(j, j + 100);
           await api(`/rest/v1/${ch.table}?${ch.fk}=in.(${part.map((r) => `"${r.id.replace(/"/g, '')}"`).join(',')})`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
           const rows = part.flatMap((r) => ch.rows(r).map((c) => ({ user_id: userId, [ch.fk]: r.id, updated_at: Math.round(r.updatedAt || 0), ...c })));
           if (rows.length) await api(`/rest/v1/${ch.table}`, { method: 'POST', headers: { Prefer: 'return=minimal' }, body: rows });
         }
       }
-      chunk.forEach((r) => sent.set(r.id, r.updatedAt));
+      kept.forEach((r) => sent.set(r.id, r.updatedAt));
     }
   }
   // A record edited again while its push was in flight stays queued.
   store.clearDirty([...sent].filter(([id, at]) => store.get().records[id]?.updatedAt === at).map(([id]) => id));
 }
 
+const inList = (ids) => ids.map((id) => `"${id.replace(/"/g, '')}"`).join(',');
+// Server copies of some records, children included, for records the server refused to overwrite.
+async function fetchByIds(kind, ids) {
+  const spec = KINDS[kind];
+  const rows = await api(`/rest/v1/${spec.table}?select=*&id=in.(${inList(ids)})`);
+  const recs = (rows || []).map((r) => fromRow(r, spec, kind));
+  for (const ch of spec.children || []) {
+    const crow = (await api(`/rest/v1/${ch.table}?select=*&${ch.fk}=in.(${inList(ids)})`)) || [];
+    for (const rec of recs) ch.fold(rec, crow.filter((c) => c[ch.fk] === rec.id && Number(c.updated_at) === Math.round(rec.updatedAt)));
+  }
+  return recs;
+}
+
 let timer = null; let retryTimer = null; let retryDelay = 2000;
 function scheduleSync(ms = 1200) { setStatus({}); clearTimeout(timer); timer = setTimeout(syncNow, ms); }
 
 async function doSync() {
+  try { await syncOnce(); } finally { releaseFirst(); }
+}
+async function syncOnce() {
   if (!configured || !cfg.session) return;
   if (typeof navigator !== 'undefined' && navigator.onLine === false) { setStatus({ phase: 'offline' }); return; }
   setStatus({ phase: 'syncing', error: '' });
@@ -295,15 +345,34 @@ export function startAutoSync() {
 }
 
 // ---------- backup files ----------
-export function backupBlob() {
+const BACKUP_SETTINGS = ['lang', 'currency', 'theme', 'dark', 'bookId', 'lastAccountId'];
+// Records, settings and receipt photos (photos live only on this device, so the backup is their copy).
+export async function backupBlob() {
   const s = store.get();
-  return new Blob([JSON.stringify({ app: 'kasku-plus', version: 2, exportedAt: Date.now(), records: Object.values(s.records) }, null, 1)], { type: 'application/json' });
+  const photos = {};
+  for (const r of Object.values(s.records)) {
+    if (r.kind !== 'bill' || !r.hasPhoto || r.deleted) continue;
+    try { const url = await getPhoto(r.id); if (url) photos[r.id] = url; } catch { /* no photo store here */ }
+  }
+  const settings = Object.fromEntries(BACKUP_SETTINGS.map((k) => [k, s.settings[k]]));
+  return new Blob([JSON.stringify({ app: 'kasku-plus', version: 3, exportedAt: Date.now(), settings, records: Object.values(s.records), photos }, null, 1)], { type: 'application/json' });
 }
+// Every record that differs from the backup takes the backup's copy, stamped now so it also wins over
+// later edits and deletes, here and on the other devices. Records made after the backup stay.
 export async function restoreBackup(file) {
   const data = JSON.parse(await file.text());
   if (data?.app !== 'kasku-plus' || !Array.isArray(data.records)) throw new Error('bad');
-  store.merge(data.records.map((r) => ({ ...r, updatedAt: Math.max(r.updatedAt || 0, 1) })), { markDirty: true });
+  const now = Date.now(); const cur = store.get().records;
+  const same = (a, b) => a && sameContent(a, b) && sameContent(b, a);
+  const changed = data.records.filter((r) => r && r.id && r.kind && !same(cur[r.id], r));
+  store.merge(changed.map((r) => ({ ...r, updatedAt: now })), { markDirty: true });
+  if (data.settings && typeof data.settings === 'object') {
+    store.setSettings(Object.fromEntries(BACKUP_SETTINGS.filter((k) => data.settings[k] != null).map((k) => [k, data.settings[k]])));
+  }
+  for (const [id, url] of Object.entries(data.photos || {})) {
+    if (typeof url === 'string' && url.startsWith('data:image/')) await putPhoto(id, url).catch(() => {});
+  }
   syncNow();
 }
 
-export const _test = { toRow, fromRow, KINDS, ORDER };
+export const _test = { toRow, fromRow, KINDS, ORDER, sameContent };

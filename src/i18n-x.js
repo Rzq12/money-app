@@ -231,3 +231,27 @@ Object.assign(enX, {
   summaryTitle: 'This month in brief', summaryIntro: 'A short summary of where your money went, compared with last month.', summaryCreate: 'Write summary', summaryRegen: 'Rewrite',
   summaryMade: 'Written {date}', summaryEmpty: 'No transactions this month yet.',
 });
+
+// Messages added with the QA fixes (storage, sync, rates, transfers).
+Object.assign(idX, {
+  storageFull: 'Penyimpanan perangkat penuh. Perubahan terakhir tidak tersimpan. Kosongkan ruang lalu coba lagi.',
+  storageRecovered: 'Sebagian data di perangkat ini rusak dan tidak bisa dibaca. Salinannya disimpan terpisah; data dari cloud akan diunduh lagi saat sinkron.',
+  resetQSync: 'Hapus data di perangkat ini? Data di cloud tetap ada dan akan diunduh lagi.',
+  resetQSyncPending: 'Ada {n} perubahan yang belum terkirim ke cloud dan akan hilang. Tetap hapus data di perangkat ini? Data di cloud akan diunduh lagi.',
+  needToAccount: 'Pilih akun tujuan transfer.', needRate: 'Isi kurs {code} di Pengaturan › Mata uang sebelum transfer antar mata uang.',
+  exprNegative: 'Hasil hitungan negatif. Periksa angkanya.', ratesMissingWarn: 'Kurs {codes} belum diisi, jadi total belum akurat.',
+  baseChangeQ: 'Ganti mata uang utama ke {code}? Kurs yang tersimpan dihitung ulang terhadap {code}.',
+  baseChangeNoRate: 'Kurs {code} belum diisi, jadi kurs lain tidak bisa dihitung ulang dan perlu diisi lagi. Tetap ganti?',
+  deleteAccountQ2: 'Hapus akun ini? {n} transaksi pemasukan/pengeluarannya ikut terhapus. Transfer dengan akun lain tetap ada, dan {r} transaksi berulang dari akun ini dijeda.',
+});
+Object.assign(enX, {
+  storageFull: 'Device storage is full. Your last change was not saved. Free up space and try again.',
+  storageRecovered: 'Some data on this device was damaged and could not be read. A copy was kept aside; the cloud copy downloads again on the next sync.',
+  resetQSync: 'Erase the data on this device? The cloud copy stays and downloads again.',
+  resetQSyncPending: '{n} changes have not reached the cloud yet and will be lost. Erase the data on this device anyway? The cloud copy downloads again.',
+  needToAccount: 'Pick the account to transfer to.', needRate: 'Enter the {code} rate in Settings › Currencies before transferring between currencies.',
+  exprNegative: 'The sum is negative. Check the numbers.', ratesMissingWarn: 'No rate yet for {codes}, so totals are not accurate.',
+  baseChangeQ: 'Change the main currency to {code}? Saved rates are recalculated against {code}.',
+  baseChangeNoRate: 'There is no {code} rate yet, so the other rates cannot be recalculated and must be entered again. Change anyway?',
+  deleteAccountQ2: 'Delete this account? Its {n} income and expense transactions are deleted too. Transfers with other accounts stay, and {r} recurring schedules from this account are paused.',
+});

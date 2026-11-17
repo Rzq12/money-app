@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { store, useStore, live, nameOf, uid, accountBalances, LIABILITY, CURRENCIES, formatMoney } from './store.js';
 import { useT, useMoney, CatIcon, Icon, Sheet, IconPicker, Empty, confirmAsk, notify, DEFAULT_ICONS } from './ui.jsx';
-import { rateOf } from './logic.js';
+import { rateOf, missingRates } from './logic.js';
+import { num } from './Money.jsx';
 import { BillRow } from './Ledger.jsx';
 
 const TYPES = ['cash', 'debit', 'credit', 'ewallet', 'invest', 'receivable', 'payable', 'other'];
@@ -19,15 +20,20 @@ function AccountEditor({ acc, onClose }) {
   const [err, setErr] = useState('');
   function save() {
     if (!name.trim()) return setErr(t.accountName + '?');
-    store.put({ id: acc?.id || uid(), kind: 'account', type, name: name.trim(), initBalance: parseFloat(bal) || 0, currency, icon, color, note, order: acc?.order ?? Date.now() });
+    store.put({ id: acc?.id || uid(), kind: 'account', type, name: name.trim(), initBalance: num(bal), currency, icon, color, note, order: acc?.order ?? Date.now() });
     onClose();
   }
   async function del() {
     const n = live(records, 'account').length;
     if (n <= 1) return notify(t.keepOneAccount);
-    if (!(await confirmAsk(t.deleteAccountQ, { danger: true, okLabel: t.delete }))) return;
-    live(records, 'bill').filter((b) => b.accountId === acc.id || b.toAccountId === acc.id).forEach((b) => store.remove(b.id));
-    store.remove(acc.id); onClose();
+    // Income and expenses belong to this account alone and go with it. Transfers also move money in or
+    // out of another account, so they stay and that account's balance is unchanged. Schedules that
+    // would keep booking to this account are paused.
+    const own = live(records, 'bill').filter((b) => b.accountId === acc.id && b.type !== 'transfer');
+    const recs = live(records, 'recurring').filter((r) => r.active && (r.accountId === acc.id || r.toAccountId === acc.id));
+    const q = t.deleteAccountQ2.replace('{n}', own.length).replace('{r}', recs.length);
+    if (!(await confirmAsk(q, { danger: true, okLabel: t.delete }))) return;
+    if (store.putMany([...own.map((b) => ({ id: b.id, deleted: true })), ...recs.map((r) => ({ id: r.id, active: false })), { id: acc.id, deleted: true }])) onClose();
   }
   return (
     <Sheet open onClose={onClose} title={acc ? t.editAccount : t.newAccount} full
@@ -45,7 +51,7 @@ function AccountEditor({ acc, onClose }) {
         </label>
         <label className="field"><span>{t.accountName}</span><input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} /></label>
         <label className="field"><span>{LIABILITY.has(type) ? `${t.initBalance} (${t.debt}: -)` : t.initBalance}</span>
-          <input inputMode="decimal" value={bal} onChange={(e) => setBal(e.target.value.replace(/[^0-9.-]/g, ''))} placeholder="0" /></label>
+          <input inputMode="decimal" value={bal} onChange={(e) => setBal(e.target.value.replace(/[^0-9.,-]/g, ''))} placeholder="0" /></label>
         <label className="field"><span>{t.currency}</span>
           <select value={currency} onChange={(e) => setCurrency(e.target.value)}>{CURRENCIES.map((c) => <option key={c}>{c}</option>)}</select></label>
         <label className="field"><span>{t.note}</span><input value={note} onChange={(e) => setNote(e.target.value)} maxLength={80} /></label>
@@ -79,6 +85,7 @@ export default function Wallet({ onOpenBill }) {
   const inBase = (a) => (bal[a.id] || 0) * rateOf(records, a.currency, settings.currency);
   for (const a of accounts) { const v = inBase(a); if (v >= 0) asset += v; else debt += -v; }
   const groups = TYPES.map((ty) => [ty, accounts.filter((a) => a.type === ty)]).filter(([, l]) => l.length);
+  const missing = missingRates(records, settings.currency);
   return (
     <>
       <div className="hero inset">
@@ -87,6 +94,7 @@ export default function Wallet({ onOpenBill }) {
         <div className="hero-big">{money(asset - debt)}</div>
         <div className="hero-row"><span>{t.asset} <b>{money(asset)}</b></span><span>{t.debt} <b>{money(debt)}</b></span></div>
       </div>
+      {missing.length > 0 && <p className="err gut" role="status"><a href="#/pengaturan?tab=mata-uang">{t.ratesMissingWarn.replace('{codes}', missing.join(', '))}</a></p>}
       {groups.map(([ty, list]) => (
         <section key={ty} className="day">
           <header className="day-head plain"><span className="day-name">{t.types[ty]}</span>
