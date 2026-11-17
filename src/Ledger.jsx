@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useStore, live, nameOf, firstDayOfWeek, formatMoney } from './store.js';
-import { useT, useMoney, useBase, CatIcon, Icon, PeriodNav, Segmented, periodRange, dayKey, Sheet, Empty, Progress } from './ui.jsx';
+import { useT, useMoney, useBase, useTween, CatIcon, Icon, PeriodNav, Segmented, periodRange, dayKey, Sheet, Empty, Progress } from './ui.jsx';
 import { mainBudget } from './logic.js';
 
 export function billTitle(b, records, lang) {
@@ -16,8 +16,10 @@ export function BillRow({ b, onOpen }) {
   const tm = new Date(b.time);
   const sub = [`${String(tm.getHours()).padStart(2, '0')}:${String(tm.getMinutes()).padStart(2, '0')}`,
     b.type !== 'transfer' && acc ? nameOf(acc, lang) : '', b.note, ...(b.tags || []).map((x) => `#${x}`)].filter(Boolean).join(' · ');
+  // "fresh": saved a moment ago (added/edited here, or just synced in) → brief highlight as confirmation.
+  const fresh = Date.now() - (b.updatedAt || 0) < 1500;
   return (
-    <button className="bill" onClick={() => onOpen(b)}>
+    <button className={`bill${fresh ? ' fresh' : ''}`} onClick={() => onOpen(b)}>
       <CatIcon icon={c.icon} color={c.color} size={40} />
       <span className="bill-main">
         <span className="bill-title">{billTitle(b, records, lang)}</span>
@@ -92,11 +94,12 @@ function WeeklyPulse({ bills, t, lang }) {
   const baseY = H - bottom; const usable = baseY - pad;
   const bw = (W - 2 * pad - 6 * gap) / 7;
   const fmt = new Intl.DateTimeFormat(lang === 'id' ? 'id-ID' : 'en-US', { weekday: 'narrow' });
+  const todayA = useTween(p.today); const weekA = useTween(p.week);
   return (
     <div className="pulse">
       <div className="pulse-top">
-        <div><small>{t.today} · {t.expense}</small><b>{money(p.today, { whole: true })}</b></div>
-        <div className="r"><small>{t.thisWeek}</small><b>{money(p.week, { whole: true })}</b></div>
+        <div><small>{t.today} · {t.expense}</small><b>{money(todayA, { whole: true })}</b></div>
+        <div className="r"><small>{t.thisWeek}</small><b>{money(weekA, { whole: true })}</b></div>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${t.week}: ${money(p.week, { whole: true })}`}>
         {p.vals.map((v, i) => {
@@ -107,7 +110,7 @@ function WeeklyPulse({ bills, t, lang }) {
           const day = new Date(p.ws.getFullYear(), p.ws.getMonth(), p.ws.getDate() + i);
           return (
             <g key={i}>
-              <rect x={x} y={baseY - h} width={bw} height={h} rx={radius} fill="currentColor" fillOpacity={a} />
+              <rect x={x} y={baseY - h} width={bw} height={h} rx={radius} fill="currentColor" fillOpacity={a} style={{ animationDelay: `${i * 15}ms` }} />
               <text x={x + bw / 2} y={H - 8} textAnchor="middle" fill="currentColor" fillOpacity={isToday ? 1 : 0.5} fontSize="16" fontWeight="600">{fmt.format(day)}</text>
             </g>
           );
@@ -176,6 +179,7 @@ export default function Ledger({ onOpenBill, onAddAt }) {
   const { exp, inc } = sumOf(bills, base);
   const budget = mainBudget(records, settings.bookId);
   const left = budget ? budget.amount - exp : null;
+  const expA = useTween(exp); const incA = useTween(inc); const balA = useTween(inc - exp);
 
   const results = useMemo(() => {
     const k = q.trim().toLowerCase(); if (!k) return [];
@@ -199,10 +203,10 @@ export default function Ledger({ onOpenBill, onAddAt }) {
               <button className="icon-btn ring" aria-label={t.search} onClick={() => setSearchOpen(true)}><Icon name="search" size={18} /></button>
             </div>
             <div className="hero-label">{t.expense}</div>
-            <div className="hero-big">{money(exp)}</div>
+            <div className="hero-big">{money(expA)}</div>
             <div className="hero-row">
-              <span>{t.income} <b>{money(inc)}</b></span>
-              <span>{t.balance} <b>{money(inc - exp)}</b></span>
+              <span>{t.income} <b>{money(incA)}</b></span>
+              <span>{t.balance} <b>{money(balA)}</b></span>
             </div>
             {budget && (
               <a className="hero-budget" href="#/anggaran">
