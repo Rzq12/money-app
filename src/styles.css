@@ -529,6 +529,19 @@ label.bill { cursor: pointer; }
 .bar.done i { position: relative; overflow: hidden; }
 .bar.done i::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--surface) 70%, transparent), transparent); transform: translateX(-100%); animation: shine .6s var(--ease) var(--dur-3) forwards; }
 @keyframes shine { to { transform: translateX(100%); } }
+.reached { display: inline-flex; align-items: center; gap: 4px; }
+.reached .ic { animation: pick var(--dur-2) var(--ease) var(--dur-3) backwards; }
+
+/* Switch (M24): the knob slides with transform and stretches a little while pressed. */
+.switch::after { transition: transform var(--dur-2) var(--ease), width var(--dur-1) var(--ease); }
+.switch:checked::after { left: 2px; transform: translateX(16px); }
+.switch:active::after { width: 24px; }
+.switch:checked:active::after { transform: translateX(12px); }
+@media (pointer: coarse) {
+  .switch:checked::after { left: 2px; transform: translateX(20px); }
+  .switch:active::after { width: 28px; }
+  .switch:checked:active::after { transform: translateX(16px); }
+}
 .bill.fresh { animation: fresh 1.2s var(--ease); }
 .skel-lines { display: flex; flex-direction: column; gap: 8px; padding: 4px 0; }
 .skel-lines i { display: block; height: 12px; border-radius: 6px; background: var(--track); animation: skel 1.2s ease-in-out infinite; }

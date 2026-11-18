@@ -119,7 +119,7 @@ export function Budgets() {
     <div className="page">
       <PageHead title={t.budget} sub={t.budgetSub} action={<AddBtn label={t.add} onClick={() => setEdit({})} />} />
       {!list.length ? <Empty icon="target" title={t.budgetEmpty} hint={t.budgetEmptyHint} /> : (
-        <div className="card">
+        <div className="card stagger">
           {list.map((b) => {
             const { spent, start, end } = budgetSpent(b, records, settings);
             const c = records[b.categoryId]; const left = b.amount - spent;
@@ -202,7 +202,7 @@ export function Goals() {
   return (
     <div className="page">
       <PageHead title={t.goals} sub={t.goalsSub} action={<AddBtn label={t.add} onClick={() => setEdit({})} />} />
-      {!list.length ? <Empty icon="flag" title={t.goalEmpty} hint={t.goalEmptyHint} /> : list.map((g) => {
+      {!list.length ? <Empty icon="flag" title={t.goalEmpty} hint={t.goalEmptyHint} /> : <div className="stagger">{list.map((g) => {
         const acc = records[g.accountId]; const cur = acc?.currency || settings.currency;
         const saved = goalSaved(g, records, settings.currency); const fm = (v) => formatMoney(v, cur, lang);
         const done = saved >= g.target;
@@ -212,7 +212,7 @@ export function Goals() {
             <Progress value={saved} max={g.target} />
             <div className="rank-top sub">
               <small>{nameOf(acc, lang)}{g.due ? ` · ${t.goalDue} ${fmtDate(g.due, lang)}` : ''}</small>
-              <small>{done ? t.goalReached : `${t.goalLeft} ${fm(g.target - saved)}`}</small>
+              {done ? <small className="reached"><Icon name="check" size={12} />{t.goalReached}</small> : <small>{t.goalLeft} {fm(g.target - saved)}</small>}
             </div>
             <div className="btn-row">
               <button className="btn primary" onClick={() => setDep(g)}>{t.goalDeposit}</button>
@@ -220,7 +220,7 @@ export function Goals() {
             </div>
           </div>
         );
-      })}
+      })}</div>}
       {edit && <GoalEditor item={edit.id ? edit : null} onClose={() => setEdit(null)} />}
       {dep && <GoalDeposit goal={dep} onClose={() => setDep(null)} />}
     </div>
@@ -286,7 +286,7 @@ export function Debts() {
     return (
       <section>
         <h2 className="sec-title">{title}</h2>
-        <div className="card">
+        <div className="card stagger">
           {items.map((d) => {
             const paid = paidOf(d); const left = d.amount - paid; const late = d.due && left > 0 && d.due < Date.now();
             return (
@@ -378,7 +378,7 @@ export function Recurring() {
     <div className="page">
       <PageHead title={t.recurring} sub={t.recSub} action={<AddBtn label={t.add} onClick={() => setEdit({})} />} />
       {!list.length ? <Empty icon="repeat" title={t.recEmpty} hint={t.recEmptyHint} /> : (
-        <div className="card">
+        <div className="card stagger">
           {list.map((r) => {
             const c = records[r.categoryId]; const acc = records[r.accountId];
             const title = r.type === 'transfer' ? `${nameOf(acc, lang)} → ${nameOf(records[r.toAccountId], lang)}` : nameOf(c, lang);
@@ -434,7 +434,7 @@ export function Rules() {
     <div className="page">
       <PageHead title={t.rules} sub={t.rulesSub} action={<AddBtn label={t.add} onClick={() => setEdit({})} />} />
       {!list.length ? <Empty icon="filter" title={t.ruleEmpty} hint={t.ruleEmptyHint} /> : (
-        <div className="card">
+        <div className="card stagger">
           {list.map((r) => {
             const c = records[r.categoryId];
             return (
