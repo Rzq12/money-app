@@ -102,6 +102,8 @@ function Shell() {
   else page = <Ledger onOpenBill={openBill} onAddAt={(time) => setEditor({ time })} />;
 
   const walletOn = path === 'pengaturan' && tab === 'dompet';
+  // Bottom-nav slot of the active tab, for the sliding indicator (slot 2 is the record button).
+  const navSlot = path === '' ? 0 : path === 'laporan' ? 1 : walletOn ? 3 : 4;
   return (
     <div className="app">
       <nav className="side" aria-label={t.nav}>
@@ -112,8 +114,10 @@ function Shell() {
         </div>
         <div className="side-sync"><SyncBadge /></div>
       </nav>
-      <main className="main">{page}</main>
+      {/* keyed by path so each page plays its entrance once; a tab change inside a page does not */}
+      <main className="main" key={path}>{page}</main>
       <nav className="bottom" aria-label={t.nav}>
+        <i className="nav-i" style={{ '--slot': navSlot }} aria-hidden="true" />
         {link('', 'ledger', 'ledger', 22)}
         {link('laporan', 'analysis', 'analysis', 22)}
         <button className="fab" aria-label={t.record} onClick={add}><Icon name="plus" size={24} /></button>

@@ -538,6 +538,20 @@ label.bill { cursor: pointer; }
 :is(.btn, .icon-btn, .text-btn, .chip, .wide-btn, .swap, .transfer-acc, .type-cell, .select-btn):active:not(:disabled) { transform: scale(.97); }
 .bill, .row, .cat-cell, .icon-opt, .cal-d { transition: background var(--dur-1), box-shadow var(--dur-1) var(--ease); }
 :is(button, a, label):is(.bill, .row):active { background: var(--track); }
+/* Page entrance (M1): the new page rises 10px into place; the old one is simply replaced. */
+.main { animation: page-in var(--dur-2) var(--ease) backwards; }
+@keyframes page-in { from { opacity: 0; transform: translateY(10px); } }
+
+/* Bottom nav (M2–M4): one pill slides to the active tab, its icon lifts a little, the record button gives. */
+.nav-i { position: absolute; top: 0; left: 4px; width: calc((100% - 8px) / 5); height: 3px; display: flex; justify-content: center; transform: translateX(calc(var(--slot) * 100%)); transition: transform var(--dur-2) var(--ease); pointer-events: none; }
+.nav-i::before { content: ""; width: 24px; border-radius: 0 0 3px 3px; background: var(--text); }
+.bottom > a .ic { transition: transform var(--dur-1) var(--ease); }
+.bottom > a.on .ic { transform: scale(1.08); }
+.fab:active { transform: scale(.92); }
+.fab .ic { transition: transform var(--dur-1) var(--ease); }
+.fab:active .ic { transform: rotate(90deg); }
+.side-g a { transition: background var(--dur-1), color var(--dur-1); }
+
 /* Field focus ring eases in (M43). */
 .field input, .field select, .field textarea, .search-in, .inline-add input, .inline-add select, .chat-in input, .rate-in {
   transition: box-shadow var(--dur-1) var(--ease);
