@@ -592,6 +592,20 @@ label.bill { cursor: pointer; }
 .lbl-in { display: inline-block; animation: lbl-in var(--dur-1) var(--ease); }
 @keyframes lbl-in { from { opacity: 0; transform: translateY(4px); } }
 
+/* Sheets and dialogs leave the way they came (M15, M17); taps go through at once while they fade.
+   A dragged sheet (M16) carries on down from where the finger let go (--drop). */
+.sheet { transition: transform var(--dur-2) var(--ease); }
+.sheet-wrap.out { animation: fade-out var(--dur-2) var(--ease) forwards; pointer-events: none; }
+.sheet-wrap.out .sheet { animation: down var(--dur-2) var(--ease) forwards; }
+.dialog { animation: pop-in var(--dur-1) var(--ease); }
+.sheet-wrap.center.out { animation-duration: var(--dur-1); }
+.sheet-wrap.out .dialog { animation: pop-out var(--dur-1) var(--ease) forwards; }
+@keyframes fade-out { to { opacity: 0; } }
+@keyframes down { to { opacity: 0; transform: translateY(var(--drop, 24px)); } }
+@keyframes pop-in { from { opacity: 0; transform: scale(.96); } }
+@keyframes pop-out { to { opacity: 0; transform: scale(.96); } }
+@media (max-width: 639px) { .sheet-head { touch-action: none; } }
+
 /* Field focus ring eases in (M43). */
 .field input, .field select, .field textarea, .search-in, .inline-add input, .inline-add select, .chat-in input, .rate-in {
   transition: box-shadow var(--dur-1) var(--ease);

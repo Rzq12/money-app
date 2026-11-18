@@ -179,15 +179,50 @@ function useDialogFocus(open, onClose) {
   return ref;
 }
 
+// Drag the sheet's header down to dismiss it, on phones where the sheet sits at the bottom (M16).
+// Past 30% of its height, or with a quick flick, it closes; otherwise it springs back.
+function useSheetDrag(ref, dismiss) {
+  const d = useRef(null);
+  const start = (e) => {
+    if (e.pointerType === 'mouse' || e.target.closest('button, a, input') || matchMedia('(min-width: 640px)').matches) return;
+    d.current = { y: e.clientY, t: e.timeStamp, dy: 0 };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    ref.current.style.transition = 'none';
+  };
+  const move = (e) => {
+    if (!d.current) return;
+    const el = ref.current; const dy = Math.max(0, e.clientY - d.current.y); d.current.dy = dy;
+    el.style.transform = `translateY(${dy}px)`;
+    el.parentElement.style.backgroundColor = `rgba(0, 0, 0, ${0.4 * (1 - Math.min(1, dy / el.offsetHeight))})`;
+  };
+  const end = (e) => {
+    const s = d.current; if (!s) return;
+    d.current = null;
+    const el = ref.current;
+    el.style.transition = '';
+    const flick = s.dy > 24 && s.dy / (e.timeStamp - s.t) > 0.5; // faster than 0.5px per ms
+    if (s.dy > el.offsetHeight * 0.3 || flick) { el.style.setProperty('--drop', '100%'); dismiss(); return; }
+    el.style.transform = ''; el.parentElement.style.backgroundColor = '';
+  };
+  return { onPointerDown: start, onPointerMove: move, onPointerUp: end, onPointerCancel: end };
+}
+
+// A close the sheet starts itself (✕, backdrop, Escape, back button, drag) plays the exit first (M15).
+// A close the content asks for, like saving, is immediate, so recording never waits on an animation.
 export function Sheet({ open, onClose, title, children, actions, full }) {
   const t = useT();
-  const ref = useDialogFocus(open, onClose);
+  const [out, setOut] = useState(false);
+  const dismiss = () => { if (out) return; if (reduceMotion()) onClose?.(); else setOut(true); };
+  useEffect(() => { if (!open) setOut(false); }, [open]);
+  const ref = useDialogFocus(open, dismiss);
+  const drag = useSheetDrag(ref, dismiss);
   if (!open) return null;
   return (
-    <div className="sheet-wrap" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
+    <div className={`sheet-wrap ${out ? 'out' : ''}`} onMouseDown={(e) => e.target === e.currentTarget && dismiss()}
+      onAnimationEnd={(e) => { if (out && e.target === e.currentTarget) { setOut(false); onClose?.(); } }}>
       <div ref={ref} tabIndex={-1} className={`sheet ${full ? 'full' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
-        <div className="sheet-head">
-          <button className="icon-btn" onClick={onClose} aria-label={t.close}><Icon name="close" /></button>
+        <div className="sheet-head" {...drag}>
+          <button className="icon-btn" onClick={dismiss} aria-label={t.close}><Icon name="close" /></button>
           <h2>{title}</h2>
           <div className="sheet-actions">{actions}</div>
         </div>
@@ -204,13 +239,16 @@ export function confirmAsk(msg, opts = {}) {
 }
 export const notify = (msg) => confirmAsk(msg, { info: true });
 export function ConfirmHost() {
-  const t = useT(); const [q, setQ] = useState(null);
-  useEffect(() => { ask = setQ; return () => { ask = null; }; }, []);
-  const done = (v) => { q?.res(v); setQ(null); };
+  const t = useT(); const [q, setQ] = useState(null); const [out, setOut] = useState(false);
+  const n = useRef(0); // each question gets its own dialog element, so its entrance always plays
+  useEffect(() => { ask = (x) => { setOut(false); setQ({ ...x, n: ++n.current }); }; return () => { ask = null; }; }, []);
+  // The answer goes back at once; the dialog only finishes its exit afterwards (M17).
+  const done = (v) => { if (!q || out) return; q.res(v); if (reduceMotion()) setQ(null); else setOut(true); };
   const ref = useDialogFocus(!!q, () => done(false));
   if (!q) return null;
   return (
-    <div className="sheet-wrap center top" onMouseDown={(e) => e.target === e.currentTarget && done(false)}>
+    <div key={q.n} className={`sheet-wrap center top ${out ? 'out' : ''}`} onMouseDown={(e) => e.target === e.currentTarget && done(false)}
+      onAnimationEnd={(e) => { if (out && e.target === e.currentTarget) { setOut(false); setQ(null); } }}>
       <div ref={ref} tabIndex={-1} className="dialog" role="alertdialog" aria-modal="true" aria-label={q.msg}>
         <p>{q.msg}</p>
         <div className="btn-row end">
