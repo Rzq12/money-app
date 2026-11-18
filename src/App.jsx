@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useStore, store, loadErrors } from './store.js';
-import { LangCtx, useT, Icon, Logo, ConfirmHost, notify } from './ui.jsx';
+import { LangCtx, useT, Icon, Logo, ConfirmHost, notify, reduceMotion } from './ui.jsx';
 import { runRecurring } from './logic.js';
 import Ledger from './Ledger.jsx';
 import Analysis from './Analysis.jsx';
@@ -62,8 +62,13 @@ function Shell() {
     if (loadErrors.length) { loadErrors.length = 0; notify(tRef.current.storageRecovered); }
     return () => { alive = false; offErr(); window.removeEventListener('hashchange', h); window.removeEventListener('beforeinstallprompt', p); document.removeEventListener('visibilitychange', due); };
   }, []);
+  const themed = useRef(false);
   useEffect(() => {
     const r = document.documentElement;
+    // After the first paint, a theme or accent change crossfades the colours for a moment (M35).
+    let fade;
+    if (themed.current && !reduceMotion()) { r.classList.add('theming'); fade = setTimeout(() => r.classList.remove('theming'), 300); }
+    themed.current = true;
     // The ink accent would vanish on the black dark background; it turns light ink there.
     const accent = settings.dark && settings.theme === INK ? '#ededed' : settings.theme;
     r.style.setProperty('--accent', accent);
@@ -72,6 +77,7 @@ function Shell() {
     r.lang = settings.lang;
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', settings.dark ? '#000000' : '#fafafa');
     setStatusBar(settings.dark);
+    return () => { clearTimeout(fade); r.classList.remove('theming'); };
   }, [settings.theme, settings.dark, settings.lang]);
 
   const openBill = (b) => setEditor({ bill: b });
@@ -102,6 +108,8 @@ function Shell() {
   else page = <Ledger onOpenBill={openBill} onAddAt={(time) => setEditor({ time })} />;
 
   const walletOn = path === 'pengaturan' && tab === 'dompet';
+  // Bottom-nav slot of the active tab, for the sliding indicator (slot 2 is the record button).
+  const navSlot = path === '' ? 0 : path === 'laporan' ? 1 : walletOn ? 3 : 4;
   return (
     <div className="app">
       <nav className="side" aria-label={t.nav}>
@@ -112,8 +120,10 @@ function Shell() {
         </div>
         <div className="side-sync"><SyncBadge /></div>
       </nav>
-      <main className="main">{page}</main>
+      {/* keyed by path so each page plays its entrance once; a tab change inside a page does not */}
+      <main className="main" key={path}>{page}</main>
       <nav className="bottom" aria-label={t.nav}>
+        <i className="nav-i" style={{ '--slot': navSlot }} aria-hidden="true" />
         {link('', 'ledger', 'ledger', 22)}
         {link('laporan', 'analysis', 'analysis', 22)}
         <button className="fab" aria-label={t.record} onClick={add}><Icon name="plus" size={24} /></button>

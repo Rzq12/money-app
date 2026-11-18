@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { dict } from './i18n.js';
 import { useStore, formatMoney, firstDayOfWeek, store } from './store.js';
 import { billBase, dayKeyOf } from './logic.js';
@@ -30,7 +30,19 @@ export function useT() {
 }
 // Counts a number up to its new value (from 0 on first render) so a changed total is noticed.
 // Display only: callers still use the real value everywhere else. Instant under reduced motion.
-const reduceMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+export const reduceMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+// Plays a list row's exit (M9) and then runs `done`, which removes the record. Rows that are not on
+// screen, and reduced motion, skip straight to `done`.
+export function leave(id, done) {
+  const el = document.querySelector(`[data-id="${id}"]`);
+  if (!el || reduceMotion()) { done(); return; }
+  el.style.height = `${el.offsetHeight}px`; // a fixed start height, so the collapse can animate
+  el.classList.add('leaving');
+  // Animations pause while the app is in the background; the timer makes sure the delete still lands.
+  let ran = false; const once = () => { if (!ran) { ran = true; done(); } };
+  el.addEventListener('animationend', once, { once: true });
+  setTimeout(once, 400);
+}
 export function useTween(value, ms = 400) {
   const [shown, setShown] = useState(() => (reduceMotion() ? value : 0));
   const from = useRef(shown);
@@ -47,6 +59,20 @@ export function useTween(value, ms = 400) {
     return () => cancelAnimationFrame(raf);
   }, [value, ms]);
   return shown;
+}
+// A number that counts to its new value, for results shown inline (calculators, split totals: M29).
+export function Count({ value, format = String, ms = 300 }) {
+  return format(useTween(value, ms));
+}
+// Flashes green or red when `value` goes up or down (live prices: M26). Keyed by the change count so
+// each move restarts the flash; nothing happens on the first render or under reduced motion.
+export function Flash({ value, className = '', children }) {
+  const prev = useRef(value); const [ch, setCh] = useState({ dir: '', n: 0 });
+  useEffect(() => {
+    if (value !== prev.current && !reduceMotion()) setCh((c) => ({ dir: value > prev.current ? 'up' : 'down', n: c.n + 1 }));
+    prev.current = value;
+  }, [value]);
+  return <span key={ch.n} className={`${className} ${ch.dir ? `flash-${ch.dir}` : ''}`}>{children}</span>;
 }
 export function useMoney() {
   const { settings } = useStore();
@@ -167,15 +193,50 @@ function useDialogFocus(open, onClose) {
   return ref;
 }
 
+// Drag the sheet's header down to dismiss it, on phones where the sheet sits at the bottom (M16).
+// Past 30% of its height, or with a quick flick, it closes; otherwise it springs back.
+function useSheetDrag(ref, dismiss) {
+  const d = useRef(null);
+  const start = (e) => {
+    if (e.pointerType === 'mouse' || e.target.closest('button, a, input') || matchMedia('(min-width: 640px)').matches) return;
+    d.current = { y: e.clientY, t: e.timeStamp, dy: 0 };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    ref.current.style.transition = 'none';
+  };
+  const move = (e) => {
+    if (!d.current) return;
+    const el = ref.current; const dy = Math.max(0, e.clientY - d.current.y); d.current.dy = dy;
+    el.style.transform = `translateY(${dy}px)`;
+    el.parentElement.style.backgroundColor = `rgba(0, 0, 0, ${0.4 * (1 - Math.min(1, dy / el.offsetHeight))})`;
+  };
+  const end = (e) => {
+    const s = d.current; if (!s) return;
+    d.current = null;
+    const el = ref.current;
+    el.style.transition = '';
+    const flick = s.dy > 24 && s.dy / (e.timeStamp - s.t) > 0.5; // faster than 0.5px per ms
+    if (s.dy > el.offsetHeight * 0.3 || flick) { el.style.setProperty('--drop', '100%'); dismiss(); return; }
+    el.style.transform = ''; el.parentElement.style.backgroundColor = '';
+  };
+  return { onPointerDown: start, onPointerMove: move, onPointerUp: end, onPointerCancel: end };
+}
+
+// A close the sheet starts itself (✕, backdrop, Escape, back button, drag) plays the exit first (M15).
+// A close the content asks for, like saving, is immediate, so recording never waits on an animation.
 export function Sheet({ open, onClose, title, children, actions, full }) {
   const t = useT();
-  const ref = useDialogFocus(open, onClose);
+  const [out, setOut] = useState(false);
+  const dismiss = () => { if (out) return; if (reduceMotion()) onClose?.(); else setOut(true); };
+  useEffect(() => { if (!open) setOut(false); }, [open]);
+  const ref = useDialogFocus(open, dismiss);
+  const drag = useSheetDrag(ref, dismiss);
   if (!open) return null;
   return (
-    <div className="sheet-wrap" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
+    <div className={`sheet-wrap ${out ? 'out' : ''}`} onMouseDown={(e) => e.target === e.currentTarget && dismiss()}
+      onAnimationEnd={(e) => { if (out && e.target === e.currentTarget) { setOut(false); onClose?.(); } }}>
       <div ref={ref} tabIndex={-1} className={`sheet ${full ? 'full' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
-        <div className="sheet-head">
-          <button className="icon-btn" onClick={onClose} aria-label={t.close}><Icon name="close" /></button>
+        <div className="sheet-head" {...drag}>
+          <button className="icon-btn" onClick={dismiss} aria-label={t.close}><Icon name="close" /></button>
           <h2>{title}</h2>
           <div className="sheet-actions">{actions}</div>
         </div>
@@ -192,13 +253,16 @@ export function confirmAsk(msg, opts = {}) {
 }
 export const notify = (msg) => confirmAsk(msg, { info: true });
 export function ConfirmHost() {
-  const t = useT(); const [q, setQ] = useState(null);
-  useEffect(() => { ask = setQ; return () => { ask = null; }; }, []);
-  const done = (v) => { q?.res(v); setQ(null); };
+  const t = useT(); const [q, setQ] = useState(null); const [out, setOut] = useState(false);
+  const n = useRef(0); // each question gets its own dialog element, so its entrance always plays
+  useEffect(() => { ask = (x) => { setOut(false); setQ({ ...x, n: ++n.current }); }; return () => { ask = null; }; }, []);
+  // The answer goes back at once; the dialog only finishes its exit afterwards (M17).
+  const done = (v) => { if (!q || out) return; q.res(v); if (reduceMotion()) setQ(null); else setOut(true); };
   const ref = useDialogFocus(!!q, () => done(false));
   if (!q) return null;
   return (
-    <div className="sheet-wrap center top" onMouseDown={(e) => e.target === e.currentTarget && done(false)}>
+    <div key={q.n} className={`sheet-wrap center top ${out ? 'out' : ''}`} onMouseDown={(e) => e.target === e.currentTarget && done(false)}
+      onAnimationEnd={(e) => { if (out && e.target === e.currentTarget) { setOut(false); setQ(null); } }}>
       <div ref={ref} tabIndex={-1} className="dialog" role="alertdialog" aria-modal="true" aria-label={q.msg}>
         <p>{q.msg}</p>
         <div className="btn-row end">
@@ -220,8 +284,24 @@ export function Segmented({ value, onChange, options, label }) {
     onChange(options[i].value);
     e.currentTarget.querySelectorAll('button')[i]?.focus();
   };
+  // One indicator slides under the chosen option (M33). It is measured from the buttons, and again when
+  // they resize (web font loaded, language changed), so it always fits the label.
+  const ref = useRef(null); const [box, setBox] = useState(null);
+  const labels = options.map((o) => o.label).join('|');
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const measure = () => {
+      const b = el.querySelector('[aria-checked="true"]');
+      if (b) setBox((o) => (o && o.x === b.offsetLeft && o.w === b.offsetWidth ? o : { x: b.offsetLeft, w: b.offsetWidth }));
+    };
+    measure();
+    if (typeof ResizeObserver !== 'function') return undefined; // test runner (jsdom)
+    const ro = new ResizeObserver(measure); ro.observe(el);
+    return () => ro.disconnect();
+  }, [value, labels]);
   return (
-    <div className="seg" role="radiogroup" aria-label={label} onKeyDown={move}>
+    <div ref={ref} className={`seg ${box ? 'slide' : ''}`} role="radiogroup" aria-label={label} onKeyDown={move}>
+      {box && <i className="seg-i" style={{ width: box.w, transform: `translateX(${box.x}px)` }} aria-hidden="true" />}
       {options.map((o) => (
         <button key={o.value} type="button" role="radio" aria-checked={value === o.value} tabIndex={value === o.value ? 0 : -1}
           className={value === o.value ? 'on' : ''} onClick={() => onChange(o.value)}>{o.label}</button>
@@ -262,7 +342,8 @@ export function AddBtn({ label, onClick }) {
 }
 export function Progress({ value, max, over }) {
   const pct = max > 0 ? Math.min(100, Math.max(0, (value / max) * 100)) : 0;
-  return <div className={`bar ${over ? 'over' : ''}`} role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${pct}%` }} /></div>;
+  const done = !over && max > 0 && value >= max; // a reached target gets one shine (M23)
+  return <div className={`bar ${over ? 'over' : ''} ${done ? 'done' : ''}`} role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}><i style={{ transform: `scaleX(${pct / 100})` }} /></div>;
 }
 // Amount of a bill in the main currency, for totals that mix accounts in different currencies.
 export function useBase() {

@@ -33,22 +33,32 @@ const PALETTE = ['#0070f3', '#7928ca', '#ff0080', '#f5a623', '#00dfd8', '#ff4d4d
 const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 const tooClose = (a, b) => { const [x, y] = [rgb(a), rgb(b)]; return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]) < 70; };
 
-function Donut({ parts, total, label, money }) {
+// Pointing at a slice (a mouse hover, or a tap on touch) highlights it here and in the list (M18).
+// A tap on the same slice again clears it.
+const hiProps = (key, hi, setHi) => ({
+  onPointerEnter: (e) => e.pointerType === 'mouse' && setHi(key),
+  onPointerLeave: (e) => e.pointerType === 'mouse' && setHi(null),
+  onPointerUp: (e) => e.pointerType !== 'mouse' && setHi(hi === key ? null : key),
+});
+
+function Donut({ parts, total, label, money, hi, setHi }) {
   const R = 78; const C = 2 * Math.PI * R;
+  const picked = parts.find((p) => p.key === hi);
+  const shown = useTween(picked ? picked.value : total); // the centre counts up (M21)
   let off = 0;
   return (
-    <svg viewBox="0 0 200 200" className="donut" role="img" aria-label={`${label}: ${money(total)}`}>
+    <svg viewBox="0 0 200 200" className={`donut ${picked ? 'has-hi' : ''}`} role="img" aria-label={`${label}: ${money(total)}`}>
       <circle cx="100" cy="100" r={R} fill="none" stroke="var(--track)" strokeWidth="14" />
       {parts.map((p) => {
         const len = (p.value / total) * C;
         const el = (
-          <circle key={p.key} cx="100" cy="100" r={R} fill="none" stroke={p.color} strokeWidth="14"
-            strokeDasharray={`${Math.max(len - 2, 0.01)} ${C}`} strokeDashoffset={-off} transform="rotate(-90 100 100)" />
+          <circle key={p.key} cx="100" cy="100" r={R} fill="none" stroke={p.color} strokeWidth="14" className={p.key === hi ? 'hi' : ''}
+            strokeDasharray={`${Math.max(len - 2, 0.01)} ${C}`} strokeDashoffset={-off} transform="rotate(-90 100 100)" {...hiProps(p.key, hi, setHi)} />
         );
         off += len; return el;
       })}
-      <text x="100" y="94" textAnchor="middle" className="donut-l">{label}</text>
-      <text x="100" y="116" textAnchor="middle" className="donut-v">{money(total, { compact: true })}</text>
+      <text x="100" y="94" textAnchor="middle" className="donut-l">{picked ? picked.name : label}</text>
+      <text x="100" y="116" textAnchor="middle" className="donut-v">{money(shown, { compact: true })}</text>
     </svg>
   );
 }
@@ -59,6 +69,7 @@ export default function Analysis() {
   const [anchor, setAnchor] = useLiveAnchor();
   const [kind, setKind] = useState('expense');
   const [dim, setDim] = useState('category');
+  const [hi, setHi] = useState(null); // highlighted slice key
   const [s, e] = periodRange(unit, anchor);
   const bills = live(records, 'bill').filter((b) => (b.bookId || 'book-default') === settings.bookId && b.type === kind && b.time >= s.getTime() && b.time < e.getTime());
   const total = bills.reduce((a, b) => a + base(b), 0);
@@ -125,7 +136,7 @@ export default function Analysis() {
           <div className="split even">
             <div className="split-a">
               <h2 className="sec-title">{t.share}</h2>
-              <div className="card chart-card"><Donut parts={parts} total={total} label={kindLabel} money={money} /></div>
+              <div className="card chart-card"><Donut parts={parts} total={total} label={kindLabel} money={money} hi={hi} setHi={setHi} /></div>
               <h2 className="sec-title">{t.trend}</h2>
               <div className="card trend">
                 <div className="trend-bars" role="img" aria-label={`${t.trend}: ${kindLabel}`}>
@@ -142,13 +153,13 @@ export default function Analysis() {
               <div className="toolbar start">
                 <Segmented label={t.groupBy} value={dim} onChange={setDim} options={[{ value: 'category', label: t.category }, { value: 'account', label: t.account }, { value: 'member', label: t.member }]} />
               </div>
-              <div className="card">
+              <div className={`card ${parts.some((p) => p.key === hi) ? 'has-hi' : ''}`}>
                 {parts.map((p) => (
-                  <div key={p.key} className="rank">
+                  <div key={p.key} className={`rank ${p.key === hi ? 'hi' : ''}`} {...hiProps(p.key, hi, setHi)}>
                     <CatIcon icon={p.icon} color={p.color} size={36} />
                     <div className="rank-main">
                       <div className="rank-top"><span>{p.name} <small>{p.n}×</small></span><b>{money(p.value)}</b></div>
-                      <div className="bar"><i style={{ width: `${(p.value / total) * 100}%`, background: p.color }} /></div>
+                      <div className="bar"><i style={{ transform: `scaleX(${p.value / total})`, background: p.color }} /></div>
                     </div>
                     <span className="pct">{((p.value / total) * 100).toFixed(1)}%</span>
                   </div>

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { store, useStore, live, nameOf, uid } from './store.js';
-import { useT, CatIcon, Icon, Sheet, Segmented, IconPicker, confirmAsk } from './ui.jsx';
+import { useT, CatIcon, Icon, Sheet, Segmented, IconPicker, confirmAsk, reduceMotion } from './ui.jsx';
 import { useSync, signIn, signUp, resetPassword, signOut, syncNow, configured } from './sync.js';
 import { Logo } from './ui.jsx';
 import { saveFile } from './native.js';
@@ -11,7 +11,8 @@ export const download = (blob, name) => saveFile(blob, name);
 export function SyncBadge() {
   const t = useT(); const { cfg, status } = useSync();
   const map = { off: t.notConnected, idle: status.pending ? t.unsent.replace('{n}', status.pending) : t.synced, syncing: t.syncing, offline: status.pending ? `${t.offline} · ${t.unsent.replace('{n}', status.pending)}` : t.offline, error: t.syncFailed };
-  return <span className={`sync-badge ${status.phase}`} title={status.phase === 'error' ? status.error : cfg.session?.user?.email || ''}>{map[status.phase] || ''}</span>;
+  // keyed by phase so each new state fades in; "syncing" breathes while it lasts (M38)
+  return <span key={status.phase} className={`sync-badge ${status.phase}`} title={status.phase === 'error' ? status.error : cfg.session?.user?.email || ''}>{map[status.phase] || ''}</span>;
 }
 
 // Account and sync state for the signed-in user.
@@ -47,6 +48,12 @@ export function AuthScreen() {
   const [mode, setMode] = useState('in');
   const [email, setEmail] = useState(''); const [pw, setPw] = useState('');
   const [busy, setBusy] = useState(false); const [msg, setMsg] = useState(null);
+  // A failed attempt shakes the card once (M37). It runs on the element, so the fields keep focus.
+  const card = useRef(null);
+  const fail = (err) => {
+    setMsg({ err });
+    if (!reduceMotion()) card.current?.animate([{ transform: 'none' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'translateX(-4px)' }, { transform: 'translateX(4px)' }, { transform: 'none' }], { duration: 360, easing: 'ease-in-out' });
+  };
   const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
   const explain = (e) => (/invalid login|invalid_credentials/i.test(e.message) ? t.authBad
     : /not confirmed/i.test(e.message) ? t.authUnconfirmed
@@ -54,14 +61,14 @@ export function AuthScreen() {
         : e.status === 429 ? t.authTooMany : e.message);
   async function submit(e) {
     e.preventDefault(); setMsg(null);
-    if (offline) return setMsg({ err: t.authOffline });
-    if (mode !== 'reset' && pw.length < 8) return setMsg({ err: t.authShort });
+    if (offline) return fail(t.authOffline);
+    if (mode !== 'reset' && pw.length < 8) return fail(t.authShort);
     setBusy(true);
     try {
       if (mode === 'in') await signIn(email.trim(), pw);
       else if (mode === 'up') { if ((await signUp(email.trim(), pw)) === 'confirm') setMsg({ ok: t.authCheckMail }); }
       else { await resetPassword(email.trim()); setMsg({ ok: t.authResetSent }); }
-    } catch (err) { setMsg({ err: explain(err) }); }
+    } catch (err) { fail(explain(err)); }
     setBusy(false);
   }
   if (!configured) {
@@ -69,14 +76,14 @@ export function AuthScreen() {
   }
   return (
     <div className="auth">
-      <form className="auth-card" onSubmit={submit}>
+      <form ref={card} className="auth-card" onSubmit={submit}>
         <Logo />
         <h1>{mode === 'up' ? t.signUpTitle : mode === 'reset' ? t.resetTitle : t.signInTitle}</h1>
         <p className="hint">{mode === 'reset' ? t.resetIntro : t.authIntro}</p>
         <label className="field"><span>{t.email}</span><input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" autoFocus /></label>
         {mode !== 'reset' && <label className="field"><span>{t.password}</span><input type="password" required minLength={8} value={pw} onChange={(e) => setPw(e.target.value)} autoComplete={mode === 'up' ? 'new-password' : 'current-password'} /></label>}
         {msg && <p className={msg.err ? 'err' : 'ok-msg'} role={msg.err ? 'alert' : 'status'}>{msg.err || msg.ok}</p>}
-        <button className="btn primary" type="submit" disabled={busy}>{busy ? t.syncing : mode === 'up' ? t.signUp : mode === 'reset' ? t.resetSend : t.signIn}</button>
+        <button className="btn primary" type="submit" disabled={busy}>{busy && <span className="spin" aria-hidden="true" />}{busy ? t.syncing : mode === 'up' ? t.signUp : mode === 'reset' ? t.resetSend : t.signIn}</button>
         <div className="auth-links">
           {mode !== 'in' && <button type="button" className="text-btn" onClick={() => { setMode('in'); setMsg(null); }}>{t.haveAccount}</button>}
           {mode !== 'up' && <button type="button" className="text-btn" onClick={() => { setMode('up'); setMsg(null); }}>{t.noAccount}</button>}

@@ -37,6 +37,10 @@
   --font: "Geist Variable", Geist, Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "Geist Mono Variable", "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
   --ease: cubic-bezier(.16, 1, .3, 1);
+  /* motion durations: taps and small feedback, things entering or leaving, charts and progress */
+  --dur-1: .15s;
+  --dur-2: .25s;
+  --dur-3: .4s;
   color-scheme: light;
 }
 :root[data-theme="dark"] {
@@ -511,14 +515,97 @@ label.bill { cursor: pointer; }
 /* Motion layer: charts draw in, totals count up (useTween), new rows confirm a save, skeletons while loading. */
 .pulse rect { transform-box: fill-box; transform-origin: bottom; animation: grow-y .3s var(--ease) backwards; }
 .tb i { transform-origin: bottom; animation: grow-y .35s var(--ease) backwards; transition: height .3s var(--ease); }
-.bar i { animation: grow-x .4s var(--ease) backwards; transition: width .3s var(--ease); }
-.donut circle[stroke-dasharray] { animation: sweep .4s var(--ease) backwards; transition: stroke-dasharray .3s var(--ease), stroke-dashoffset .3s var(--ease); }
+/* Bars fill with scaleX, not width, so a period change only moves pixels the GPU already has (M22). */
+.bar i { width: 100%; transform-origin: left; animation: grow-x var(--dur-3) var(--ease) backwards; transition: transform var(--dur-3) var(--ease), background var(--dur-2); }
+.donut circle[stroke-dasharray] { cursor: pointer; animation: sweep var(--dur-3) var(--ease) backwards; transition: stroke-dasharray .3s var(--ease), stroke-dashoffset .3s var(--ease), opacity var(--dur-1), stroke-width var(--dur-1) var(--ease); }
+/* Slice highlight (M18, M20): the rest steps back. */
+.donut.has-hi circle[stroke-dasharray]:not(.hi) { opacity: .35; }
+.donut circle.hi { stroke-width: 18; }
+.rank { transition: opacity var(--dur-1); }
+.card.has-hi .rank:not(.hi) { opacity: .5; }
+.tb i { transition: height .3s var(--ease), opacity var(--dur-1), background var(--dur-2); }
+@media (hover: hover) { .trend-bars:hover .tb:not(:hover) i { opacity: .5; } }
+/* A reached goal shines once, after the bar has filled (M23). */
+.bar.done i { position: relative; overflow: hidden; }
+.bar.done i::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--surface) 70%, transparent), transparent); transform: translateX(-100%); animation: shine .6s var(--ease) var(--dur-3) forwards; }
+@keyframes shine { to { transform: translateX(100%); } }
+.reached { display: inline-flex; align-items: center; gap: 4px; }
+.reached .ic { animation: pick var(--dur-2) var(--ease) var(--dur-3) backwards; }
+
+/* Live prices (M26): the dot pings while prices are live; a moved price flashes green or red once. */
+.live-dot { position: relative; }
+.live-dot.on::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: inherit; animation: ping 1.6s var(--ease) infinite; }
+@keyframes ping { to { transform: scale(2.6); opacity: 0; } }
+.flash-up { border-radius: 4px; animation: flash-up .6s var(--ease); }
+.flash-down { border-radius: 4px; animation: flash-down .6s var(--ease); }
+@keyframes flash-up { from { background: color-mix(in srgb, #29bc9b 28%, transparent); } }
+@keyframes flash-down { from { background: color-mix(in srgb, var(--exp) 22%, transparent); } }
+
+/* Chat (M27, M28): bubbles rise from the side they belong to, proposals follow one by one, and three
+   dots bounce while the AI works. */
+.chat-log > .bubble { animation: bubble var(--dur-2) var(--ease) backwards; transform-origin: left bottom; }
+.chat-log > .bubble.me { transform-origin: right bottom; }
+@keyframes bubble { from { opacity: 0; transform: translateY(12px) scale(.96); } }
+.bubble .proposal { animation: rise var(--dur-2) var(--ease) backwards; animation-delay: calc(min(var(--i, 0), 5) * 80ms + 80ms); }
+.typing { flex-direction: row; gap: 4px; padding: 14px 14px; }
+.typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: dot 1s ease-in-out infinite; }
+.typing i:nth-child(2) { animation-delay: .15s; }
+.typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes dot { 30% { transform: translateY(-3px); opacity: 1; } 0%, 60%, 100% { opacity: .45; } }
+
+/* Import result (M30, M31): success draws a check in a popping circle; failure shakes its alert. */
+.status-line { display: flex; align-items: center; gap: 8px; }
+.st-ic { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; flex: none; background: var(--track); }
+.st-ic.good { animation: pick var(--dur-2) var(--ease); }
+.st-ic.good path { stroke-dasharray: 20; stroke-dashoffset: 20; animation: draw var(--dur-3) var(--ease) 80ms forwards; }
+.st-ic.bad { background: var(--exp-soft); animation: shake .3s ease-in-out; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@keyframes shake { 20%, 60% { transform: translateX(-4px); } 40%, 80% { transform: translateX(4px); } }
+
+/* Theme and accent (M34, M35): a picked swatch grows into its ring; while .theming is on <html>
+   (300ms, set in App.jsx) every colour crossfades instead of snapping. Transform stays listed so a
+   switch knob still slides during it. */
+.swatch { transition: transform var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease); }
+.swatch.on { transform: scale(1.1); }
+.theming, .theming *, .theming *::before, .theming *::after {
+  transition-property: background-color, color, fill, stroke, box-shadow, transform !important;
+  transition-duration: var(--dur-2) !important;
+  transition-timing-function: var(--ease) !important;
+}
+
+/* Sign-in (M36, M37): the card rises in, the logo first; a busy button spins (the shake lives in More.jsx). */
+.auth-card { animation: auth-in var(--dur-3) var(--ease) backwards; }
+.auth-card > :not(.logo-mark) { animation: fade var(--dur-3) var(--ease) 60ms backwards; }
+@keyframes auth-in { from { opacity: 0; transform: translateY(16px); } }
+.spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Global status (M38, M40, M41): sync state fades in and breathes while syncing; an empty state's
+   icon settles with one small sway; AI text replaces its skeleton with a fade. */
+.sync-badge { animation: fade var(--dur-2) var(--ease); }
+.sync-badge.syncing { animation: breathe 1.2s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: .55; } }
+.empty-art { animation: pop-in var(--dur-2) var(--ease) backwards, sway .6s var(--ease) var(--dur-2); }
+.empty > p, .empty > small { animation: fade var(--dur-2) var(--ease) 60ms backwards; }
+@keyframes sway { 30% { transform: rotate(-4deg); } 65% { transform: rotate(3deg); } }
+.summary-text { animation: fade var(--dur-2) var(--ease); }
+
+/* Switch (M24): the knob slides with transform and stretches a little while pressed. */
+.switch::after { transition: transform var(--dur-2) var(--ease), width var(--dur-1) var(--ease); }
+.switch:checked::after { left: 2px; transform: translateX(16px); }
+.switch:active::after { width: 24px; }
+.switch:checked:active::after { transform: translateX(12px); }
+@media (pointer: coarse) {
+  .switch:checked::after { left: 2px; transform: translateX(20px); }
+  .switch:active::after { width: 28px; }
+  .switch:checked:active::after { transform: translateX(16px); }
+}
 .bill.fresh { animation: fresh 1.2s var(--ease); }
 .skel-lines { display: flex; flex-direction: column; gap: 8px; padding: 4px 0; }
 .skel-lines i { display: block; height: 12px; border-radius: 6px; background: var(--track); animation: skel 1.2s ease-in-out infinite; }
 .skel-lines i:last-child { width: 60%; }
 @keyframes grow-y { from { transform: scaleY(0); } }
-@keyframes grow-x { from { width: 0; } }
+@keyframes grow-x { from { transform: scaleX(0); } }
 @keyframes sweep { from { stroke-dasharray: 0 490; } }
 /* slide in over the first 300ms, then the accent tint fades so the row settles back to normal */
 @keyframes fresh {
@@ -527,9 +614,90 @@ label.bill { cursor: pointer; }
 }
 @keyframes skel { 50% { opacity: .45; } }
 
+/* Press feedback (M42): one shared response for every control, so a tap always reads as received. */
+.btn, .icon-btn, .text-btn, .chip, .wide-btn, .swap, .transfer-acc, .type-cell, .select-btn {
+  transition: background var(--dur-1), box-shadow var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
+}
+:is(.btn, .icon-btn, .text-btn, .chip, .wide-btn, .swap, .transfer-acc, .type-cell, .select-btn):active:not(:disabled) { transform: scale(.97); }
+.bill, .row, .cat-cell, .icon-opt, .cal-d { transition: background var(--dur-1), box-shadow var(--dur-1) var(--ease); }
+:is(button, a, label):is(.bill, .row):active { background: var(--track); }
+/* Page entrance (M1): the new page rises 10px into place; the old one is simply replaced. */
+.main { animation: page-in var(--dur-2) var(--ease) backwards; }
+@keyframes page-in { from { opacity: 0; transform: translateY(10px); } }
+
+/* Bottom nav (M2–M4): one pill slides to the active tab, its icon lifts a little, the record button gives. */
+.nav-i { position: absolute; top: 0; left: 4px; width: calc((100% - 8px) / 5); height: 3px; display: flex; justify-content: center; transform: translateX(calc(var(--slot) * 100%)); transition: transform var(--dur-2) var(--ease); pointer-events: none; }
+.nav-i::before { content: ""; width: 24px; border-radius: 0 0 3px 3px; background: var(--text); }
+.bottom > a .ic { transition: transform var(--dur-1) var(--ease); }
+.bottom > a.on .ic { transform: scale(1.08); }
+.fab:active { transform: scale(.92); }
+.fab .ic { transition: transform var(--dur-1) var(--ease); }
+.fab:active .ic { transform: rotate(90deg); }
+.side-g a { transition: background var(--dur-1), color var(--dur-1); }
+
+/* Lists (M7, M25): the first eight items rise in reading order, 30ms apart; the rest are just there. */
+.stagger > * { animation: rise var(--dur-2) var(--ease) backwards; }
+.stagger > :nth-child(2) { animation-delay: 30ms; }
+.stagger > :nth-child(3) { animation-delay: 60ms; }
+.stagger > :nth-child(4) { animation-delay: 90ms; }
+.stagger > :nth-child(5) { animation-delay: 120ms; }
+.stagger > :nth-child(6) { animation-delay: 150ms; }
+.stagger > :nth-child(7) { animation-delay: 180ms; }
+.stagger > :nth-child(8) { animation-delay: 210ms; }
+.stagger > :nth-child(n+9) { animation: none; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+
+/* Calendar month change (M8): the grid comes in from the side the user moved toward. */
+.cal.next { animation: from-r var(--dur-2) var(--ease); }
+.cal.prev { animation: from-l var(--dur-2) var(--ease); }
+@keyframes from-r { from { opacity: 0; transform: translateX(16px); } }
+@keyframes from-l { from { opacity: 0; transform: translateX(-16px); } }
+
+/* Deleted row (M9): fades and closes its gap before the record goes (see leave() in ui.jsx). */
+.leaving { animation: leave var(--dur-2) var(--ease) forwards; overflow: hidden; pointer-events: none; }
+@keyframes leave { to { opacity: 0; height: 0; min-height: 0; padding-top: 0; padding-bottom: 0; } }
+
+/* Segmented control (M33): the chosen pill is one element that slides; the buttons sit on top of it. */
+.seg { position: relative; }
+.seg-i { position: absolute; top: 2px; bottom: 2px; left: 0; border-radius: var(--r-sm); background: var(--surface); box-shadow: var(--e2); transition: transform var(--dur-2) var(--ease), width var(--dur-2) var(--ease); pointer-events: none; }
+.seg button { position: relative; }
+.seg.slide button.on { background: none; box-shadow: none; }
+
+/* Bill editor (M10–M14): keys give under the finger, the grid fades when the type changes, a picked
+   category's icon settles in, the OK label crossfades between "=" and "Selesai". */
+.key { transition: background var(--dur-1), transform var(--dur-1) var(--ease); }
+.key:active { transform: scale(.94); background: var(--line); }
+.key.ok:active { background: color-mix(in srgb, var(--primary) 80%, var(--surface)); }
+.amount { transform-origin: right center; }
+.swap-in { animation: fade var(--dur-1) var(--ease); }
+.cat-cell.on .caticon, .icon-opt.on .ic { animation: pick var(--dur-1) var(--ease); }
+@keyframes pick { from { transform: scale(.88); } }
+.lbl-in { display: inline-block; animation: lbl-in var(--dur-1) var(--ease); }
+@keyframes lbl-in { from { opacity: 0; transform: translateY(4px); } }
+
+/* Sheets and dialogs leave the way they came (M15, M17); taps go through at once while they fade.
+   A dragged sheet (M16) carries on down from where the finger let go (--drop). */
+.sheet { transition: transform var(--dur-2) var(--ease); }
+.sheet-wrap.out { animation: fade-out var(--dur-2) var(--ease) forwards; pointer-events: none; }
+.sheet-wrap.out .sheet { animation: down var(--dur-2) var(--ease) forwards; }
+.dialog { animation: pop-in var(--dur-1) var(--ease); }
+.sheet-wrap.center.out { animation-duration: var(--dur-1); }
+.sheet-wrap.out .dialog { animation: pop-out var(--dur-1) var(--ease) forwards; }
+@keyframes fade-out { to { opacity: 0; } }
+@keyframes down { to { opacity: 0; transform: translateY(var(--drop, 24px)); } }
+@keyframes pop-in { from { opacity: 0; transform: scale(.96); } }
+@keyframes pop-out { to { opacity: 0; transform: scale(.96); } }
+@media (max-width: 639px) { .sheet-head { touch-action: none; } }
+
+/* Field focus ring eases in (M43). */
+.field input, .field select, .field textarea, .search-in, .inline-add input, .inline-add select, .chat-in input, .rate-in {
+  transition: box-shadow var(--dur-1) var(--ease);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; transition-duration: .01ms !important; }
-  .skel-lines i { animation: none; }
+  /* endless loops would flicker at .01ms; they stand still instead */
+  .skel-lines i, .live-dot.on::after, .typing i, .sync-badge.syncing, .spin { animation: none; }
 }
 
 /* sign-in */

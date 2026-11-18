@@ -80,7 +80,9 @@ export function ImportPage() {
           <textarea rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder={t.impPastePh} /></label>
         <div className="btn-row"><button className="btn" disabled={!text.trim()} onClick={() => show(parseNotifText(text, records, settings), 'text')}>{t.impRead}</button></div>
       </div>
-      {info && <p className={`${info.err ? 'err' : 'ok-msg'} gut`} role="status">{info.err || info.ok}</p>}
+      {/* keyed by the message so a new result replays its icon: a drawn check, or a short shake (M30, M31) */}
+      {info && <p key={info.err || info.ok} className={`${info.err ? 'err' : 'ok-msg'} gut status-line`} role="status">
+        <span className={`st-ic ${info.err ? 'bad' : 'good'}`} aria-hidden="true"><Icon name={info.err ? 'alert' : 'check'} size={14} /></span>{info.err || info.ok}</p>}
 
       {cands && (
         <section>
