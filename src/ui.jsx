@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { dict } from './i18n.js';
 import { useStore, formatMoney, firstDayOfWeek, store } from './store.js';
 import { billBase, dayKeyOf } from './logic.js';
@@ -232,8 +232,24 @@ export function Segmented({ value, onChange, options, label }) {
     onChange(options[i].value);
     e.currentTarget.querySelectorAll('button')[i]?.focus();
   };
+  // One indicator slides under the chosen option (M33). It is measured from the buttons, and again when
+  // they resize (web font loaded, language changed), so it always fits the label.
+  const ref = useRef(null); const [box, setBox] = useState(null);
+  const labels = options.map((o) => o.label).join('|');
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const measure = () => {
+      const b = el.querySelector('[aria-checked="true"]');
+      if (b) setBox((o) => (o && o.x === b.offsetLeft && o.w === b.offsetWidth ? o : { x: b.offsetLeft, w: b.offsetWidth }));
+    };
+    measure();
+    if (typeof ResizeObserver !== 'function') return undefined; // test runner (jsdom)
+    const ro = new ResizeObserver(measure); ro.observe(el);
+    return () => ro.disconnect();
+  }, [value, labels]);
   return (
-    <div className="seg" role="radiogroup" aria-label={label} onKeyDown={move}>
+    <div ref={ref} className={`seg ${box ? 'slide' : ''}`} role="radiogroup" aria-label={label} onKeyDown={move}>
+      {box && <i className="seg-i" style={{ width: box.w, transform: `translateX(${box.x}px)` }} aria-hidden="true" />}
       {options.map((o) => (
         <button key={o.value} type="button" role="radio" aria-checked={value === o.value} tabIndex={value === o.value ? 0 : -1}
           className={value === o.value ? 'on' : ''} onClick={() => onChange(o.value)}>{o.label}</button>

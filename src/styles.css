@@ -574,6 +574,12 @@ label.bill { cursor: pointer; }
 .leaving { animation: leave var(--dur-2) var(--ease) forwards; overflow: hidden; pointer-events: none; }
 @keyframes leave { to { opacity: 0; height: 0; min-height: 0; padding-top: 0; padding-bottom: 0; } }
 
+/* Segmented control (M33): the chosen pill is one element that slides; the buttons sit on top of it. */
+.seg { position: relative; }
+.seg-i { position: absolute; top: 2px; bottom: 2px; left: 0; border-radius: var(--r-sm); background: var(--surface); box-shadow: var(--e2); transition: transform var(--dur-2) var(--ease), width var(--dur-2) var(--ease); pointer-events: none; }
+.seg button { position: relative; }
+.seg.slide button.on { background: none; box-shadow: none; }
+
 /* Field focus ring eases in (M43). */
 .field input, .field select, .field textarea, .search-in, .inline-add input, .inline-add select, .chat-in input, .rate-in {
   transition: box-shadow var(--dur-1) var(--ease);
