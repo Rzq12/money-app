@@ -573,6 +573,23 @@ label.bill { cursor: pointer; }
   transition-timing-function: var(--ease) !important;
 }
 
+/* Sign-in (M36, M37): the card rises in, the logo first; a busy button spins (the shake lives in More.jsx). */
+.auth-card { animation: auth-in var(--dur-3) var(--ease) backwards; }
+.auth-card > :not(.logo-mark) { animation: fade var(--dur-3) var(--ease) 60ms backwards; }
+@keyframes auth-in { from { opacity: 0; transform: translateY(16px); } }
+.spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Global status (M38, M40, M41): sync state fades in and breathes while syncing; an empty state's
+   icon settles with one small sway; AI text replaces its skeleton with a fade. */
+.sync-badge { animation: fade var(--dur-2) var(--ease); }
+.sync-badge.syncing { animation: breathe 1.2s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: .55; } }
+.empty-art { animation: pop-in var(--dur-2) var(--ease) backwards, sway .6s var(--ease) var(--dur-2); }
+.empty > p, .empty > small { animation: fade var(--dur-2) var(--ease) 60ms backwards; }
+@keyframes sway { 30% { transform: rotate(-4deg); } 65% { transform: rotate(3deg); } }
+.summary-text { animation: fade var(--dur-2) var(--ease); }
+
 /* Switch (M24): the knob slides with transform and stretches a little while pressed. */
 .switch::after { transition: transform var(--dur-2) var(--ease), width var(--dur-1) var(--ease); }
 .switch:checked::after { left: 2px; transform: translateX(16px); }
@@ -679,7 +696,8 @@ label.bill { cursor: pointer; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; transition-duration: .01ms !important; }
-  .skel-lines i { animation: none; }
+  /* endless loops would flicker at .01ms; they stand still instead */
+  .skel-lines i, .live-dot.on::after, .typing i, .sync-badge.syncing, .spin { animation: none; }
 }
 
 /* sign-in */
