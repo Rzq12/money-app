@@ -185,7 +185,18 @@ Dasar untuk lapisan animasi Kasku+. Setiap pola punya ID (`M1`, `M2`, ...). Comm
 
 9 situs berbeda dipakai di tabel: Dribbble, Behance, Mobbin, PageFlows, Nicely Done, Awwwards, Refero, Design Spells, SaaSFrame.
 
+## Catatan implementasi (beda dari rencana di atas)
+
+- **M9:** baris yang dihapus memudar sambil tingginya menutup ke 0 dalam `--dur-2`, bukan `scaleY`. Dengan cara ini celahnya ikut menutup. Ada timer cadangan 400ms, supaya hapus tetap tersimpan walau app masuk background di tengah animasi.
+- **M15:** animasi tutup hanya untuk tutup yang dimulai sheet sendiri (✕, backdrop, Escape, tombol back, drag). Tutup dari isi (Simpan) tetap instan, jadi pencatatan cepat tidak menunggu.
+- **M28:** indikator mengetik adalah bubble sendiri yang hilang saat jawaban datang, tidak diisi ulang. Mengisi bubble yang sama butuh mengubah cara pesan disimpan.
+- **M33:** indikator `Segmented` menganimasikan `transform` dan `width`. Lebar label berbeda-beda, dan `scaleX` akan memipihkan sudut bulatnya.
+- **M38:** badge sinkron memudar antar status dan "bernapas" saat sinkron. Ikon cek kecil tidak ditambahkan, karena teks "Tersinkron" sudah menjelaskan.
+- **M43:** ring fokus tetap memakai `--focus`, bukan accent. Accent bisa pink terang dengan kontras rendah, sedangkan `--focus` sudah dipilih untuk aksesibilitas.
+
 ## Sengaja tidak dianimasikan
+
+- **Progres impor (M32).** Impor di app ini selesai seketika. Kategorisasi AI berjalan diam-diam di belakang tanpa angka progres, jadi tidak ada progres yang bisa ditampilkan tanpa menambah UI baru.
 
 - **Halaman lama saat keluar.** Butuh menahan dua halaman sekaligus. Halaman baru masuk saja sudah cukup.
 - **Gestur swipe-to-delete.** Belum ada di app dan termasuk perubahan perilaku. Yang dianimasikan hanya hilangnya baris (M9).
