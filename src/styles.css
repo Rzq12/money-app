@@ -562,6 +562,17 @@ label.bill { cursor: pointer; }
 @keyframes draw { to { stroke-dashoffset: 0; } }
 @keyframes shake { 20%, 60% { transform: translateX(-4px); } 40%, 80% { transform: translateX(4px); } }
 
+/* Theme and accent (M34, M35): a picked swatch grows into its ring; while .theming is on <html>
+   (300ms, set in App.jsx) every colour crossfades instead of snapping. Transform stays listed so a
+   switch knob still slides during it. */
+.swatch { transition: transform var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease); }
+.swatch.on { transform: scale(1.1); }
+.theming, .theming *, .theming *::before, .theming *::after {
+  transition-property: background-color, color, fill, stroke, box-shadow, transform !important;
+  transition-duration: var(--dur-2) !important;
+  transition-timing-function: var(--ease) !important;
+}
+
 /* Switch (M24): the knob slides with transform and stretches a little while pressed. */
 .switch::after { transition: transform var(--dur-2) var(--ease), width var(--dur-1) var(--ease); }
 .switch:checked::after { left: 2px; transform: translateX(16px); }
