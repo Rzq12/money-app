@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { store, useStore, live, nameOf, uid } from './store.js';
-import { useT, CatIcon, Icon, Sheet, Segmented, confirmAsk, leave } from './ui.jsx';
+import { useT, CatIcon, Icon, Sheet, Segmented, confirmAsk, leave, reduceMotion } from './ui.jsx';
 import { matchRule, parseQuick, compressImage, putPhoto, getPhoto, delPhoto, fromDateInput, hasRate } from './logic.js';
 import { callAI, aiReason, context } from './ai.js';
 
@@ -57,6 +57,14 @@ export default function BillEditor({ bill, onClose, defaultTime }) {
 
   useEffect(() => { if (bill?.hasPhoto) getPhoto(bill.id).then((u) => u && setPhoto(u)).catch(() => {}); }, [bill]);
   useEffect(() => () => rec.current?.abort?.(), []);
+
+  // The amount pops a little on every key press (M11). The animation restarts on each change and never
+  // holds up the next key.
+  const amountRef = useRef(null);
+  useEffect(() => {
+    if (!expr || reduceMotion()) return;
+    amountRef.current?.animate([{ transform: 'scale(1.04)' }, { transform: 'none' }], { duration: 120, easing: 'ease-out' });
+  }, [expr]);
 
   const cat = records[categoryId] && records[categoryId].type === catType ? records[categoryId] : null;
   const amount = evalExpr(expr);
@@ -170,7 +178,7 @@ export default function BillEditor({ bill, onClose, defaultTime }) {
           options={[{ value: 'expense', label: t.expShort }, { value: 'income', label: t.incShort }, { value: 'transfer', label: t.transfer }]} />
 
         {type !== 'transfer' ? (
-          <div className="cat-grid" role="radiogroup" aria-label={t.category}>
+          <div key={catType} className="cat-grid swap-in" role="radiogroup" aria-label={t.category}>
             {cats.map((c) => (
               <button key={c.id} role="radio" aria-checked={cat?.id === c.id} className={`cat-cell ${cat?.id === c.id ? 'on' : ''}`} onClick={() => { setCategoryId(c.id); setManual(true); setErr(''); }}>
                 <CatIcon icon={c.icon} color={c.color} size={46} />
@@ -179,7 +187,7 @@ export default function BillEditor({ bill, onClose, defaultTime }) {
             ))}
           </div>
         ) : (
-          <div className="transfer-box">
+          <div className="transfer-box swap-in">
             <button className="transfer-acc" onClick={() => setPicker('account')}>
               <small>{t.from}</small><CatIcon icon={acc?.icon} color={acc?.color} size={36} /><b>{nameOf(acc, lang)}</b>
             </button>
@@ -194,7 +202,7 @@ export default function BillEditor({ bill, onClose, defaultTime }) {
           <div className="amount-row">
             {type !== 'transfer' && cat ? <CatIcon icon={cat.icon} color={cat.color} size={34} /> : <span className="caticon ph"><Icon name={type === 'transfer' ? 'swap' : 'question'} size={16} /></span>}
             <input className="note-in" placeholder={t.notePh} aria-label={t.note} value={note} onChange={(e) => changeNote(e.target.value)} maxLength={120} />
-            <span className={`amount ${type}`} aria-live="polite">{expr ? formatExpr(expr, lang) : '0'}</span>
+            <span ref={amountRef} className={`amount ${type}`} aria-live="polite">{expr ? formatExpr(expr, lang) : '0'}</span>
           </div>
           {err && <div className="err" role="alert">{err}</div>}
           {aiNote && !err && <div className="hint ai-note" role="status"><span className="ai-tag">{t.aiLabel}</span>{aiNote}</div>}
@@ -220,7 +228,7 @@ export default function BillEditor({ bill, onClose, defaultTime }) {
           <div className="keys">
             {keys.map((k) => {
               if (k === 'date') return <button key={k} className="key fn" onClick={() => setTime(Date.now())}>{t.today}</button>;
-              if (k === 'ok') return <button key={k} className="key ok" onClick={save}>{hasOp ? '=' : t.done}</button>;
+              if (k === 'ok') return <button key={k} className="key ok" onClick={save}><span key={hasOp ? '=' : 'done'} className="lbl-in">{hasOp ? '=' : t.done}</span></button>;
               if (k === 'del') return <button key={k} className="key fn" aria-label={t.backspace} onClick={() => press('del')}><Icon name="backspace" /></button>;
               return <button key={k} className={`key ${k === '+' || k === '-' ? 'fn' : ''}`} onClick={() => press(k)}>{k === '.' ? decimalMark(lang) : k}</button>;
             })}

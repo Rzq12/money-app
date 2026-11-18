@@ -580,6 +580,18 @@ label.bill { cursor: pointer; }
 .seg button { position: relative; }
 .seg.slide button.on { background: none; box-shadow: none; }
 
+/* Bill editor (M10–M14): keys give under the finger, the grid fades when the type changes, a picked
+   category's icon settles in, the OK label crossfades between "=" and "Selesai". */
+.key { transition: background var(--dur-1), transform var(--dur-1) var(--ease); }
+.key:active { transform: scale(.94); background: var(--line); }
+.key.ok:active { background: color-mix(in srgb, var(--primary) 80%, var(--surface)); }
+.amount { transform-origin: right center; }
+.swap-in { animation: fade var(--dur-1) var(--ease); }
+.cat-cell.on .caticon, .icon-opt.on .ic { animation: pick var(--dur-1) var(--ease); }
+@keyframes pick { from { transform: scale(.88); } }
+.lbl-in { display: inline-block; animation: lbl-in var(--dur-1) var(--ease); }
+@keyframes lbl-in { from { opacity: 0; transform: translateY(4px); } }
+
 /* Field focus ring eases in (M43). */
 .field input, .field select, .field textarea, .search-in, .inline-add input, .inline-add select, .chat-in input, .rate-in {
   transition: box-shadow var(--dur-1) var(--ease);
