@@ -37,6 +37,10 @@
   --font: "Geist Variable", Geist, Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "Geist Mono Variable", "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
   --ease: cubic-bezier(.16, 1, .3, 1);
+  /* motion durations: taps and small feedback, things entering or leaving, charts and progress */
+  --dur-1: .15s;
+  --dur-2: .25s;
+  --dur-3: .4s;
   color-scheme: light;
 }
 :root[data-theme="dark"] {
@@ -526,6 +530,18 @@ label.bill { cursor: pointer; }
   25% { transform: none; opacity: 1; background: color-mix(in srgb, var(--accent) 16%, transparent); }
 }
 @keyframes skel { 50% { opacity: .45; } }
+
+/* Press feedback (M42): one shared response for every control, so a tap always reads as received. */
+.btn, .icon-btn, .text-btn, .chip, .wide-btn, .swap, .transfer-acc, .type-cell, .select-btn {
+  transition: background var(--dur-1), box-shadow var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
+}
+:is(.btn, .icon-btn, .text-btn, .chip, .wide-btn, .swap, .transfer-acc, .type-cell, .select-btn):active:not(:disabled) { transform: scale(.97); }
+.bill, .row, .cat-cell, .icon-opt, .cal-d { transition: background var(--dur-1), box-shadow var(--dur-1) var(--ease); }
+:is(button, a, label):is(.bill, .row):active { background: var(--track); }
+/* Field focus ring eases in (M43). */
+.field input, .field select, .field textarea, .search-in, .inline-add input, .inline-add select, .chat-in input, .rate-in {
+  transition: box-shadow var(--dur-1) var(--ease);
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; transition-duration: .01ms !important; }
