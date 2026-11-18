@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useStore, live, nameOf, firstDayOfWeek, formatMoney } from './store.js';
 import { useT, useMoney, useBase, useTween, useLiveAnchor, CatIcon, Icon, PeriodNav, Segmented, periodRange, dayKey, Sheet, Empty, Progress } from './ui.jsx';
 import { mainBudget, parseNumber } from './logic.js';
@@ -19,7 +19,7 @@ export function BillRow({ b, onOpen }) {
   // "fresh": saved a moment ago (added/edited here, or just synced in) → brief highlight as confirmation.
   const fresh = Date.now() - (b.updatedAt || 0) < 1500;
   return (
-    <button className={`bill${fresh ? ' fresh' : ''}`} onClick={() => onOpen(b)}>
+    <button className={`bill${fresh ? ' fresh' : ''}`} data-id={b.id} onClick={() => onOpen(b)}>
       <CatIcon icon={c.icon} color={c.color} size={40} />
       <span className="bill-main">
         <span className="bill-title">{billTitle(b, records, lang)}</span>
@@ -48,7 +48,7 @@ export function DayList({ bills, onOpen, t }) {
     return [...m.entries()];
   }, [bills]);
   const todayK = dayKey(Date.now()); const yK = dayKey(Date.now() - 86400000);
-  return groups.map(([k, list]) => {
+  return <div className="stagger">{groups.map(([k, list]) => {
     const d = new Date(list[0].time); const s = sumOf(list, base);
     return (
       <section className="day" key={k}>
@@ -66,7 +66,7 @@ export function DayList({ bills, onOpen, t }) {
         <div className="card">{list.map((b) => <BillRow key={b.id} b={b} onOpen={onOpen} />)}</div>
       </section>
     );
-  });
+  })}</div>;
 }
 
 // "Weekly pulse": same numbers and drawing rules as the original's medium home-screen
@@ -134,9 +134,12 @@ function Calendar({ anchor, bills, onOpen, onAddDay, t }) {
   const cells = [...Array(lead).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)];
   const todayK = dayKey(Date.now());
   const selBills = sel ? (byDay[sel] || []).sort((a, b) => b.time - a.time) : [];
+  // The grid slides in from the side the user moved toward (M8): later months from the right.
+  const mk = y * 12 + m; const prevMk = useRef(mk); const dir = useRef('');
+  if (prevMk.current !== mk) { dir.current = mk > prevMk.current ? 'next' : 'prev'; prevMk.current = mk; }
   return (
     <div>
-      <div className="cal card">
+      <div key={mk} className={`cal card ${dir.current}`}>
         {heads.map((w) => <div key={w} className="cal-w">{w}</div>)}
         {cells.map((n, i) => {
           if (!n) return <div key={`e${i}`} />;
@@ -179,7 +182,7 @@ export default function Ledger({ onOpenBill, onAddAt }) {
   const { exp, inc } = sumOf(bills, base);
   const budget = mainBudget(records, settings.bookId);
   const left = budget ? budget.amount - exp : null;
-  const expA = useTween(exp); const incA = useTween(inc); const balA = useTween(inc - exp);
+  const expA = useTween(exp); const incA = useTween(inc); const balA = useTween(inc - exp); const leftA = useTween(Math.abs(left || 0));
 
   const results = useMemo(() => {
     const k = q.trim().toLowerCase(); if (!k) return [];
@@ -213,7 +216,7 @@ export default function Ledger({ onOpenBill, onAddAt }) {
             </div>
             {budget && (
               <a className="hero-budget" href="#/anggaran">
-                <div className="hb-top"><span>{left < 0 ? t.overBudget : t.budgetLeft}</span><b className={left < 0 ? 'neg' : ''}>{money(Math.abs(left))}</b></div>
+                <div className="hb-top"><span>{left < 0 ? t.overBudget : t.budgetLeft}</span><b className={left < 0 ? 'neg' : ''}>{money(leftA)}</b></div>
                 <Progress value={exp} max={budget.amount} over={left < 0} />
               </a>
             )}

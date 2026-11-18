@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { store, useStore, live, nameOf, uid } from './store.js';
-import { useT, CatIcon, Icon, Sheet, Segmented, confirmAsk } from './ui.jsx';
+import { useT, CatIcon, Icon, Sheet, Segmented, confirmAsk, leave } from './ui.jsx';
 import { matchRule, parseQuick, compressImage, putPhoto, getPhoto, delPhoto, fromDateInput, hasRate } from './logic.js';
 import { callAI, aiReason, context } from './ai.js';
 
@@ -155,7 +155,8 @@ export default function BillEditor({ bill, onClose, defaultTime }) {
 
   async function del() {
     if (!(await confirmAsk(t.deleteBillQ, { danger: true, okLabel: t.delete }))) return;
-    store.remove(bill.id); delPhoto(bill.id).catch(() => {}); onClose();
+    onClose();
+    leave(bill.id, () => { store.remove(bill.id); delPhoto(bill.id).catch(() => {}); });
   }
 
   const acc = records[accountId]; const toAcc = records[toAccountId]; const mem = records[memberId];

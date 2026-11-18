@@ -30,7 +30,19 @@ export function useT() {
 }
 // Counts a number up to its new value (from 0 on first render) so a changed total is noticed.
 // Display only: callers still use the real value everywhere else. Instant under reduced motion.
-const reduceMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+export const reduceMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+// Plays a list row's exit (M9) and then runs `done`, which removes the record. Rows that are not on
+// screen, and reduced motion, skip straight to `done`.
+export function leave(id, done) {
+  const el = document.querySelector(`[data-id="${id}"]`);
+  if (!el || reduceMotion()) { done(); return; }
+  el.style.height = `${el.offsetHeight}px`; // a fixed start height, so the collapse can animate
+  el.classList.add('leaving');
+  // Animations pause while the app is in the background; the timer makes sure the delete still lands.
+  let ran = false; const once = () => { if (!ran) { ran = true; done(); } };
+  el.addEventListener('animationend', once, { once: true });
+  setTimeout(once, 400);
+}
 export function useTween(value, ms = 400) {
   const [shown, setShown] = useState(() => (reduceMotion() ? value : 0));
   const from = useRef(shown);
