@@ -192,6 +192,7 @@ Dasar untuk lapisan animasi Kasku+. Setiap pola punya ID (`M1`, `M2`, ...). Comm
 - **M28:** indikator mengetik adalah bubble sendiri yang hilang saat jawaban datang, tidak diisi ulang. Mengisi bubble yang sama butuh mengubah cara pesan disimpan.
 - **M33:** indikator `Segmented` menganimasikan `transform` dan `width`. Lebar label berbeda-beda, dan `scaleX` akan memipihkan sudut bulatnya.
 - **M38:** badge sinkron memudar antar status dan "bernapas" saat sinkron. Ikon cek kecil tidak ditambahkan, karena teks "Tersinkron" sudah menjelaskan.
+- **M8, M12 ("Smooth Tabs"):** isi tab masuk dari arah tab yang dipilih (geser 16px + fade, `--dur-2`), searah dengan indikator `Segmented`. Dipakai di Detail/Kalender, tab Pengaturan, jenis transaksi di BillEditor, dan daftar kategori. Isi lama langsung diganti, tanpa animasi keluar, sama seperti pindah halaman (M1). Dibuat dengan CSS dan hook `useSlideDir()`, bukan Motion/AnimatePresence, karena aturan proyek melarang dependency baru.
 - **M43:** ring fokus tetap memakai `--focus`, bukan accent. Accent bisa pink terang dengan kontras rendah, sedangkan `--focus` sudah dipilih untuk aksesibilitas.
 
 ## Sengaja tidak dianimasikan

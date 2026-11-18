@@ -1,7 +1,7 @@
 // The "Lainnya" menu and the settings page (general, wallets, currencies).
 import React, { useState } from 'react';
 import { store, useStore, live, nameOf, CURRENCIES, ACCENTS } from './store.js';
-import { useT, Icon, Logo, Segmented, PageHead, confirmAsk, go } from './ui.jsx';
+import { useT, Icon, Logo, Segmented, PageHead, confirmAsk, go, useSlideDir } from './ui.jsx';
 import { useSync, resetLocal } from './sync.js';
 import { SyncBadge, SyncSheet, NamedListSheet } from './More.jsx';
 import { hasRate } from './logic.js';
@@ -154,13 +154,16 @@ export function Settings({ tab, onOpenBill, installPrompt, onInstall }) {
   const t = useT();
   const tabs = [{ value: 'umum', label: t.general }, { value: 'dompet', label: t.wallet }, { value: 'mata-uang', label: t.rates }];
   const cur = tabs.some((x) => x.value === tab) ? tab : 'umum';
+  const dir = useSlideDir(tabs.findIndex((x) => x.value === cur)); // the new tab slides in from its side
   return (
     <div className="page">
       <PageHead title={t.settings} />
       <div className="toolbar start"><Segmented label={t.settings} value={cur} onChange={(v) => go(`pengaturan?tab=${v}`)} options={tabs} /></div>
-      {cur === 'umum' && <General installPrompt={installPrompt} onInstall={onInstall} />}
-      {cur === 'dompet' && <Wallet onOpenBill={onOpenBill} />}
-      {cur === 'mata-uang' && <Rates />}
+      <div key={cur} className={dir}>
+        {cur === 'umum' && <General installPrompt={installPrompt} onInstall={onInstall} />}
+        {cur === 'dompet' && <Wallet onOpenBill={onOpenBill} />}
+        {cur === 'mata-uang' && <Rates />}
+      </div>
     </div>
   );
 }

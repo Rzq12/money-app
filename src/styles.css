@@ -647,9 +647,11 @@ label.bill { cursor: pointer; }
 .stagger > :nth-child(n+9) { animation: none; }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
 
-/* Calendar month change (M8): the grid comes in from the side the user moved toward. */
-.cal.next { animation: from-r var(--dur-2) var(--ease); }
-.cal.prev { animation: from-l var(--dur-2) var(--ease); }
+/* Directional content ("Smooth Tabs", M8, M12): when a tab or month changes, the new content comes in
+   from the side the user moved toward, while the Segmented pill slides the same way. The old content is
+   simply replaced. Classes come from useSlideDir() in ui.jsx. */
+.slide-next { animation: from-r var(--dur-2) var(--ease); }
+.slide-prev { animation: from-l var(--dur-2) var(--ease); }
 @keyframes from-r { from { opacity: 0; transform: translateX(16px); } }
 @keyframes from-l { from { opacity: 0; transform: translateX(-16px); } }
 
@@ -663,13 +665,12 @@ label.bill { cursor: pointer; }
 .seg button { position: relative; }
 .seg.slide button.on { background: none; box-shadow: none; }
 
-/* Bill editor (M10–M14): keys give under the finger, the grid fades when the type changes, a picked
+/* Bill editor (M10–M14): keys give under the finger, the grid slides toward the type picked, a picked
    category's icon settles in, the OK label crossfades between "=" and "Selesai". */
 .key { transition: background var(--dur-1), transform var(--dur-1) var(--ease); }
 .key:active { transform: scale(.94); background: var(--line); }
 .key.ok:active { background: color-mix(in srgb, var(--primary) 80%, var(--surface)); }
 .amount { transform-origin: right center; }
-.swap-in { animation: fade var(--dur-1) var(--ease); }
 .cat-cell.on .caticon, .icon-opt.on .ic { animation: pick var(--dur-1) var(--ease); }
 @keyframes pick { from { transform: scale(.88); } }
 .lbl-in { display: inline-block; animation: lbl-in var(--dur-1) var(--ease); }

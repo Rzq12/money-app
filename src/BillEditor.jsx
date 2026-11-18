@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { store, useStore, live, nameOf, uid } from './store.js';
-import { useT, CatIcon, Icon, Sheet, Segmented, confirmAsk, leave, reduceMotion } from './ui.jsx';
+import { useT, CatIcon, Icon, Sheet, Segmented, confirmAsk, leave, reduceMotion, useSlideDir } from './ui.jsx';
 import { matchRule, parseQuick, compressImage, putPhoto, getPhoto, delPhoto, fromDateInput, hasRate } from './logic.js';
 import { callAI, aiReason, context } from './ai.js';
 
@@ -34,6 +34,7 @@ export default function BillEditor({ bill, onClose, defaultTime }) {
   const accounts = live(records, 'account').filter((a) => !a.archived);
   const members = live(records, 'member');
   const [type, setType] = useState(bill?.type || 'expense');
+  const typeDir = useSlideDir(['expense', 'income', 'transfer'].indexOf(type)); // content slides toward the type picked (M12)
   const catType = type === 'income' ? 'income' : 'expense';
   const cats = useMemo(() => live(records, 'category').filter((c) => c.type === catType), [records, catType]);
   const [categoryId, setCategoryId] = useState(bill?.categoryId || null);
@@ -178,7 +179,7 @@ export default function BillEditor({ bill, onClose, defaultTime }) {
           options={[{ value: 'expense', label: t.expShort }, { value: 'income', label: t.incShort }, { value: 'transfer', label: t.transfer }]} />
 
         {type !== 'transfer' ? (
-          <div key={catType} className="cat-grid swap-in" role="radiogroup" aria-label={t.category}>
+          <div key={catType} className={`cat-grid ${typeDir}`} role="radiogroup" aria-label={t.category}>
             {cats.map((c) => (
               <button key={c.id} role="radio" aria-checked={cat?.id === c.id} className={`cat-cell ${cat?.id === c.id ? 'on' : ''}`} onClick={() => { setCategoryId(c.id); setManual(true); setErr(''); }}>
                 <CatIcon icon={c.icon} color={c.color} size={46} />
@@ -187,7 +188,7 @@ export default function BillEditor({ bill, onClose, defaultTime }) {
             ))}
           </div>
         ) : (
-          <div className="transfer-box swap-in">
+          <div className={`transfer-box ${typeDir}`}>
             <button className="transfer-acc" onClick={() => setPicker('account')}>
               <small>{t.from}</small><CatIcon icon={acc?.icon} color={acc?.color} size={36} /><b>{nameOf(acc, lang)}</b>
             </button>

@@ -1,6 +1,6 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useStore, live, nameOf, firstDayOfWeek, formatMoney } from './store.js';
-import { useT, useMoney, useBase, useTween, useLiveAnchor, CatIcon, Icon, PeriodNav, Segmented, periodRange, dayKey, Sheet, Empty, Progress } from './ui.jsx';
+import { useT, useMoney, useBase, useTween, useLiveAnchor, useSlideDir, CatIcon, Icon, PeriodNav, Segmented, periodRange, dayKey, Sheet, Empty, Progress } from './ui.jsx';
 import { mainBudget, parseNumber } from './logic.js';
 
 export function billTitle(b, records, lang) {
@@ -135,11 +135,10 @@ function Calendar({ anchor, bills, onOpen, onAddDay, t }) {
   const todayK = dayKey(Date.now());
   const selBills = sel ? (byDay[sel] || []).sort((a, b) => b.time - a.time) : [];
   // The grid slides in from the side the user moved toward (M8): later months from the right.
-  const mk = y * 12 + m; const prevMk = useRef(mk); const dir = useRef('');
-  if (prevMk.current !== mk) { dir.current = mk > prevMk.current ? 'next' : 'prev'; prevMk.current = mk; }
+  const mk = y * 12 + m; const dir = useSlideDir(mk);
   return (
     <div>
-      <div key={mk} className={`cal card ${dir.current}`}>
+      <div key={mk} className={`cal card ${dir}`}>
         {heads.map((w) => <div key={w} className="cal-w">{w}</div>)}
         {cells.map((n, i) => {
           if (!n) return <div key={`e${i}`} />;
@@ -174,6 +173,7 @@ export default function Ledger({ onOpenBill, onAddAt }) {
   const { records, settings } = useStore();
   const [anchor, setAnchor] = useLiveAnchor();
   const [view, setView] = useState('detail');
+  const viewDir = useSlideDir(view === 'detail' ? 0 : 1); // Detail ↔ Kalender slides toward the tab picked
   const [searchOpen, setSearchOpen] = useState(false);
   const [q, setQ] = useState('');
   const [s, e] = periodRange('month', anchor);
@@ -228,9 +228,11 @@ export default function Ledger({ onOpenBill, onAddAt }) {
           <div className="toolbar">
             <Segmented label={t.view} value={view} onChange={setView} options={[{ value: 'detail', label: t.details }, { value: 'calendar', label: t.calendar }]} />
           </div>
-          {view === 'detail' ? (
-            bills.length ? <DayList bills={bills} onOpen={onOpenBill} t={t} /> : <Empty title={t.noBill} hint={t.addFirst} />
-          ) : <Calendar anchor={anchor} bills={bills} onOpen={onOpenBill} onAddDay={onAddAt} t={t} />}
+          <div key={view} className={viewDir}>
+            {view === 'detail' ? (
+              bills.length ? <DayList bills={bills} onOpen={onOpenBill} t={t} /> : <Empty title={t.noBill} hint={t.addFirst} />
+            ) : <Calendar anchor={anchor} bills={bills} onOpen={onOpenBill} onAddDay={onAddAt} t={t} />}
+          </div>
         </div>
       </div>
 
