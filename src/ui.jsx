@@ -328,7 +328,8 @@ export function AddBtn({ label, onClick }) {
 }
 export function Progress({ value, max, over }) {
   const pct = max > 0 ? Math.min(100, Math.max(0, (value / max) * 100)) : 0;
-  return <div className={`bar ${over ? 'over' : ''}`} role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${pct}%` }} /></div>;
+  const done = !over && max > 0 && value >= max; // a reached target gets one shine (M23)
+  return <div className={`bar ${over ? 'over' : ''} ${done ? 'done' : ''}`} role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}><i style={{ transform: `scaleX(${pct / 100})` }} /></div>;
 }
 // Amount of a bill in the main currency, for totals that mix accounts in different currencies.
 export function useBase() {
