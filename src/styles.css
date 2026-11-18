@@ -680,9 +680,16 @@ label.bill { cursor: pointer; }
 .sheet { transition: transform var(--dur-2) var(--ease); }
 .sheet-wrap.out { animation: fade-out var(--dur-2) var(--ease) forwards; pointer-events: none; }
 .sheet-wrap.out .sheet { animation: down var(--dur-2) var(--ease) forwards; }
-.dialog { animation: pop-in var(--dur-1) var(--ease); }
+/* Modals (Transitions.dev "Modal open / close"): scale up from .96 with a fade over 250ms, and back to
+   .96 faster on close (150ms). Used by dialogs everywhere and by sheets where they sit centred. */
+.dialog { animation: pop-in var(--dur-2) var(--ease); }
 .sheet-wrap.center.out { animation-duration: var(--dur-1); }
 .sheet-wrap.out .dialog { animation: pop-out var(--dur-1) var(--ease) forwards; }
+@media (min-width: 640px) {
+  .sheet { animation: pop-in var(--dur-2) var(--ease); }
+  .sheet-wrap.out { animation-duration: var(--dur-1); }
+  .sheet-wrap.out .sheet { animation: pop-out var(--dur-1) var(--ease) forwards; }
+}
 @keyframes fade-out { to { opacity: 0; } }
 @keyframes down { to { opacity: 0; transform: translateY(var(--drop, 24px)); } }
 @keyframes pop-in { from { opacity: 0; transform: scale(.96); } }
