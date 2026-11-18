@@ -1,7 +1,7 @@
 // Portfolio, split bill, the chat logger and the two calculators.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { store, useStore, live, nameOf, uid, formatMoney, CHAT_KEY } from './store.js';
-import { useT, useMoney, Icon, Sheet, Segmented, PageHead, Empty, AddBtn, Progress, confirmAsk } from './ui.jsx';
+import { useT, useMoney, Icon, Sheet, Segmented, PageHead, Empty, AddBtn, Progress, confirmAsk, Count, Flash } from './ui.jsx';
 import { splitTotals, kpr, pph21, parseQuick, toDateInput, fromDateInput, compressImage } from './logic.js';
 import { callAI, useAi, context, aiReason } from './ai.js';
 import { num, Field, AmountInput, EditActions } from './Money.jsx';
@@ -234,7 +234,7 @@ export function Portfolio() {
                       <button key={h.id} className="bill" onClick={() => setEdit(h)}>
                         <span className="bill-main"><span className="bill-title">{h.name}{h.symbol && h.symbol !== GOLD && h.symbol !== h.name ? ` · ${h.symbol}` : ''}</span>
                           <span className="bill-sub">{h.units.toLocaleString(loc, { maximumFractionDigits: 8 })} × {unitText}{dayText}</span></span>
-                        <span className="bill-end"><span className="bill-amt">{money(v, WHOLE)}</span>
+                        <span className="bill-end"><Flash value={p} className="bill-amt">{money(v, WHOLE)}</Flash>
                           <span className={`bill-sub ${d < 0 ? 'neg' : ''}`}>{d >= 0 ? '+' : ''}{money(d, WHOLE)} ({pctText(h.buyPrice ? (d / (h.units * h.buyPrice)) * 100 : 0)})</span></span>
                       </button>
                     );
@@ -349,7 +349,7 @@ function SplitEditor({ item, onClose }) {
                 onChange={(e) => { const paid = s.people.map((_, j) => (j === i ? e.target.checked : !!(s.paid || [])[j])); set({ paid }); }} />
             </label>
           ))}
-          <div className="row static sum"><span className="grow">{t.subtotal} {money(totals.subtotal)} · {t.splitService} {money(totals.service)} · {t.splitTax} {money(totals.tax)}</span><b className="bill-amt">{money(totals.total)}</b></div>
+          <div className="row static sum"><span className="grow">{t.subtotal} {money(totals.subtotal)} · {t.splitService} {money(totals.service)} · {t.splitTax} {money(totals.tax)}</span><b className="bill-amt"><Count value={totals.total} format={money} /></b></div>
         </div>
         <small className="hint">{t.splitPaidHint}</small>
         {err && <div className="err" role="alert">{err}</div>}
@@ -371,7 +371,7 @@ export function Split() {
             return (
               <button key={s.id} className="row tall" onClick={() => setEdit(s)}>
                 <span className="rank-main">
-                  <span className="rank-top"><span>{s.title}</span><b>{money(tot.total)}</b></span>
+                  <span className="rank-top"><span>{s.title}</span><b><Count value={tot.total} format={money} /></b></span>
                   <Progress value={paid} max={s.people.length} />
                   <span className="rank-top sub"><small>{s.people.join(', ')}</small><small>{paid === s.people.length ? t.paidOff : `${paid}/${s.people.length} ${t.paidOff.toLowerCase()}`}</small></span>
                 </span>
@@ -453,11 +453,11 @@ export function Chat({ onOpenBill }) {
             <div key={mi} className="bubble bot wide">
               {m.ai && <span className="ai-tag">{t.aiLabel}</span>}
               {m.note && <small className="hint">{m.note}</small>}
-              {m.proposals.map((p) => {
+              {m.proposals.map((p, pi) => {
                 const saved = p.state === 'saved' || records[p.id];
                 const gone = saved && (!records[p.id] || records[p.id].deleted);
                 return (
-                  <div key={p.id} className={`proposal ${p.state}`}>
+                  <div key={p.id} className={`proposal ${p.state}`} style={{ '--i': pi }}>
                     <span>{line(p)}{p.note ? ` · ${p.note}` : ''}</span>
                     {p.check && !saved && <small className="hint">{t.chatCheckWallet}</small>}
                     {!valid(p) && p.state === 'open' && <small className="err">{t.chatFix}</small>}
@@ -478,7 +478,7 @@ export function Chat({ onOpenBill }) {
             </div>
           );
         })}
-        {busy && <div className="bubble bot muted">{t.chatThinking}</div>}
+        {busy && <div className="bubble bot typing" role="status" aria-label={t.chatThinking}><i /><i /><i /></div>}
         <div ref={end} />
       </div>
       <form className="chat-in" onSubmit={send}>
@@ -490,8 +490,9 @@ export function Chat({ onOpenBill }) {
 }
 
 // ---------- calculators ----------
-function Result({ rows }) {
-  return <div className="card pad-card">{rows.map(([k, v, strong]) => <div key={k} className={`kv ${strong ? 'strong' : ''}`}><span>{k}</span><b>{v}</b></div>)}</div>;
+// Rows of [label, amount, strong]; the amounts count to each new result as the inputs change (M29).
+function Result({ rows, money }) {
+  return <div className="card pad-card">{rows.map(([k, v, strong]) => <div key={k} className={`kv ${strong ? 'strong' : ''}`}><span>{k}</span><b><Count value={v} format={money} /></b></div>)}</div>;
 }
 export function Kpr() {
   const t = useT(); const money = useMoney();
@@ -510,7 +511,7 @@ export function Kpr() {
           <Field label={t.kprYears}><AmountInput value={years} onChange={setYears} /></Field>
         </div>
         <div>
-          <Result rows={[[t.kprPay, money(Math.round(r.pay)), true], [t.kprLoan, money(r.loan)], [t.kprDpAmt, money(r.dp)], [t.kprInterest, money(Math.round(r.interest))], [t.kprTotal, money(Math.round(r.total))]]} />
+          <Result money={money} rows={[[t.kprPay, Math.round(r.pay), true], [t.kprLoan, r.loan], [t.kprDpAmt, r.dp], [t.kprInterest, Math.round(r.interest)], [t.kprTotal, Math.round(r.total)]]} />
           <p className="hint gut">{t.kprNote}</p>
         </div>
       </div>
@@ -544,9 +545,9 @@ export function Pph() {
           </div>
         </div>
         <div>
-          <Result rows={[[t.pphMonthly, money(Math.round(r.monthly)), true], [t.pphTakeHome, money(Math.round(r.takeHome))], [t.pphYearly, money(Math.round(r.tax))],
-            [t.pphAnnual, money(r.annual)], [t.pphJabatan, money(r.jabatan)], [`PTKP (${married ? 'K' : 'TK'}/${deps})`, money(r.ptkp)], ['PKP', money(r.pkp)]]} />
-          {r.parts.length > 0 && <Result rows={r.parts.map((p) => [`${p.rate * 100}% × ${money(p.slice)}`, money(Math.round(p.tax))])} />}
+          <Result money={money} rows={[[t.pphMonthly, Math.round(r.monthly), true], [t.pphTakeHome, Math.round(r.takeHome)], [t.pphYearly, Math.round(r.tax)],
+            [t.pphAnnual, r.annual], [t.pphJabatan, r.jabatan], [`PTKP (${married ? 'K' : 'TK'}/${deps})`, r.ptkp], ['PKP', r.pkp]]} />
+          {r.parts.length > 0 && <Result money={money} rows={r.parts.map((p) => [`${p.rate * 100}% × ${money(p.slice)}`, Math.round(p.tax)])} />}
           <p className="hint gut">{t.pphNote}</p>
         </div>
       </div>

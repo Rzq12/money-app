@@ -60,6 +60,20 @@ export function useTween(value, ms = 400) {
   }, [value, ms]);
   return shown;
 }
+// A number that counts to its new value, for results shown inline (calculators, split totals: M29).
+export function Count({ value, format = String, ms = 300 }) {
+  return format(useTween(value, ms));
+}
+// Flashes green or red when `value` goes up or down (live prices: M26). Keyed by the change count so
+// each move restarts the flash; nothing happens on the first render or under reduced motion.
+export function Flash({ value, className = '', children }) {
+  const prev = useRef(value); const [ch, setCh] = useState({ dir: '', n: 0 });
+  useEffect(() => {
+    if (value !== prev.current && !reduceMotion()) setCh((c) => ({ dir: value > prev.current ? 'up' : 'down', n: c.n + 1 }));
+    prev.current = value;
+  }, [value]);
+  return <span key={ch.n} className={`${className} ${ch.dir ? `flash-${ch.dir}` : ''}`}>{children}</span>;
+}
 export function useMoney() {
   const { settings } = useStore();
   return (n, opts) => formatMoney(n, settings.currency, settings.lang, opts);
