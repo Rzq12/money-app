@@ -13,17 +13,17 @@ class ColSpec {
   final Object? def;
 }
 
-typedef Row = Map<String, Object?>;
+typedef DbRow = Map<String, Object?>;
 
 class ChildSpec {
   const ChildSpec(this.table, this.fk, this.rows, this.fold);
   final String table, fk;
 
   /// Child rows for one parent, without user_id / fk / updated_at (the sync engine adds those).
-  final List<Row> Function(Rec rec) rows;
+  final List<DbRow> Function(Rec rec) rows;
 
   /// Writes the child rows back into the parent record.
-  final void Function(Rec rec, List<Row> rows) fold;
+  final void Function(Rec rec, List<DbRow> rows) fold;
 }
 
 class KindSpec {
@@ -45,8 +45,8 @@ String? isoTime(Object? v) {
 /// A timestamptz from PostgREST back to epoch ms.
 int? msTime(Object? v) => v == null ? null : DateTime.parse('$v').millisecondsSinceEpoch;
 
-List<Row> _list(Object? v) => [for (final x in (v as List?) ?? const []) Map<String, Object?>.from(x as Map)];
-List<Row> _byIdx(List<Row> rows) => [...rows]..sort((a, b) => _n(a['idx']).compareTo(_n(b['idx'])));
+List<DbRow> _list(Object? v) => [for (final x in (v as List?) ?? const []) Map<String, Object?>.from(x as Map)];
+List<DbRow> _byIdx(List<DbRow> rows) => [...rows]..sort((a, b) => _n(a['idx']).compareTo(_n(b['idx'])));
 
 const _named = [ColSpec('name', 'name'), ColSpec('names', 'names'), ColSpec('icon', 'icon'), ColSpec('color', 'color'), ColSpec('order', 'sort', Conv.num, 0)];
 
@@ -89,7 +89,7 @@ final Map<String, KindSpec> kinds = {
 /// Referenced tables go first so foreign keys hold within one push.
 const kindOrder = ['book', 'account', 'category', 'member', 'rate', 'goal', 'recurring', 'rule', 'budget', 'holding', 'debt', 'split', 'bill'];
 
-Row toRow(Rec rec, KindSpec spec, String userId) {
+DbRow toRow(Rec rec, KindSpec spec, String userId) {
   final row = <String, Object?>{'user_id': userId, 'id': rec['id'], 'updated_at': _n(rec['updatedAt']).round(), 'deleted': rec['deleted'] == true};
   for (final c in spec.cols) {
     Object? v = rec[c.field];
@@ -104,7 +104,7 @@ Row toRow(Rec rec, KindSpec spec, String userId) {
   return row;
 }
 
-Rec fromRow(Row row, KindSpec spec, String kind) {
+Rec fromRow(DbRow row, KindSpec spec, String kind) {
   final rec = <String, Object?>{'id': row['id'], 'kind': kind, 'updatedAt': _n(row['updated_at']), 'deleted': row['deleted'] == true};
   for (final c in spec.cols) {
     final v = row[c.column];
