@@ -92,10 +92,15 @@ class RecordStore extends ChangeNotifier {
   }
 
   /// Saves [rec] over the existing record with the same id. [at] sets updatedAt instead of now,
-  /// for writes that must not win over a newer edit made on another device.
+  /// for writes that must not win over a newer edit made on another device. Without [at] the edit
+  /// is stamped after the copy it edits, even within the same millisecond or against a copy from a
+  /// device whose clock runs ahead, so the sync engine never mistakes it for the version it sent.
   Rec? put(Rec rec, {num? at}) {
     final id = rec['id']! as String;
-    final next = <String, Object?>{...?_records[id], ...rec, 'updatedAt': at ?? _now()};
+    final old = _records[id];
+    final prev = ((old?['updatedAt'] as num?) ?? 0).floor();
+    final now = _now();
+    final next = <String, Object?>{...?old, ...rec, 'updatedAt': at ?? (now > prev ? now : prev + 1)};
     if (!_commit({..._records, id: next}, _settings, {..._dirty, id})) return null;
     notifyListeners();
     _changes.add(null);

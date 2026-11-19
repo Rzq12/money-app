@@ -84,6 +84,19 @@ void main() {
     expect(store.dirtyIds, isNot(contains('x')));
   });
 
+  test('an edit always gets a newer updatedAt than the copy it edits', () {
+    final store = RecordStore(MemoryDisk());
+    final future = DateTime.now().millisecondsSinceEpoch + 100000;
+    store.merge([
+      {'id': 'x', 'kind': 'bill', 'amount': 1, 'updatedAt': future},
+    ]);
+    store.put({'id': 'x', 'amount': 2});
+    expect(store.records['x']!['updatedAt'] as num, greaterThan(future));
+    final first = store.put({'id': 'y', 'kind': 'bill', 'amount': 1})!['updatedAt'] as num;
+    final second = store.put({'id': 'y', 'amount': 2})!['updatedAt'] as num;
+    expect(second, greaterThan(first));
+  });
+
   test('localChanges fires on put but not on merge', () async {
     final store = RecordStore(MemoryDisk());
     var n = 0;
