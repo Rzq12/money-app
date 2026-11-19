@@ -750,3 +750,30 @@ label.bill { cursor: pointer; }
 .select-btn > svg:last-child { color: var(--muted); flex: none; }
 .caticon.ph.sm { width: 26px; height: 26px; }
 .pick-list .sec-title { margin: 16px 16px 6px; }
+
+/* Chat bubble on the Ledger (M44): the round button sits above the bottom nav; its pills unfold upward
+   from it one after another, nearest first, and the chat icon turns into a close icon. */
+.cb { position: fixed; right: 16px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 19; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: none; }
+.cb-btn, .cb.open .cb-pill { pointer-events: auto; }
+.cb-btn {
+  position: relative; width: 48px; height: 48px; border-radius: 9999px; display: grid; place-items: center;
+  background: var(--surface); color: var(--text); box-shadow: var(--e2), 0 8px 20px -6px rgba(0, 0, 0, .28);
+  transition: transform var(--dur-1) var(--ease);
+}
+.cb-btn:active { transform: scale(.92); }
+.cb-btn:focus-visible, .cb-pill:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cb-btn .ic { grid-area: 1 / 1; transition: opacity var(--dur-1) var(--ease), transform var(--dur-2) var(--ease); }
+.cb-btn .ic + .ic { opacity: 0; transform: rotate(-90deg) scale(.6); }
+.cb.open .cb-btn .ic:first-child { opacity: 0; transform: rotate(90deg) scale(.6); }
+.cb.open .cb-btn .ic + .ic { opacity: 1; transform: none; }
+.cb-pills { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.cb-pill {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 16px; border-radius: 9999px;
+  background: var(--surface); color: var(--text); font-size: 14px; line-height: 20px; white-space: nowrap;
+  box-shadow: var(--e2), 0 6px 16px -6px rgba(0, 0, 0, .24);
+  opacity: 0; visibility: hidden; transform: translateY(8px) scale(.94); transform-origin: right bottom;
+  transition: opacity var(--dur-1) var(--ease), transform var(--dur-2) var(--ease), visibility 0s linear var(--dur-2);
+}
+.cb-pill:active { transform: scale(.97); }
+.cb.open .cb-pill { opacity: 1; visibility: visible; transform: none; transition-delay: calc(var(--i) * 50ms); }
+@media (min-width: 900px) { .cb { right: 24px; bottom: 24px; } }
