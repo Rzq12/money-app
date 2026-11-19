@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { useStore, live, nameOf, firstDayOfWeek, formatMoney } from './store.js';
-import { useT, useMoney, useBase, useTween, useLiveAnchor, CatIcon, Icon, PeriodNav, Segmented, periodRange, dayKey, Sheet, Empty, Progress } from './ui.jsx';
+import { useT, useMoney, useBase, useTween, useLiveAnchor, CatIcon, brandSrc, Icon, PeriodNav, Segmented, periodRange, dayKey, Sheet, Empty, Progress } from './ui.jsx';
 import { mainBudget, parseNumber } from './logic.js';
 
 export function billTitle(b, records, lang) {
@@ -20,7 +20,9 @@ export function BillRow({ b, onOpen }) {
   const fresh = Date.now() - (b.updatedAt || 0) < 1500;
   return (
     <button className={`bill${fresh ? ' fresh' : ''}`} data-id={b.id} onClick={() => onOpen(b)}>
-      <CatIcon icon={c.icon} color={c.color} size={40} />
+      {/* a bank or e-wallet logo on the account sits in the corner of the category tile */}
+      <span className="bill-ic"><CatIcon icon={c.icon} color={c.color} size={40} />
+        {brandSrc(acc?.icon) && <span className="bill-badge"><CatIcon icon={acc.icon} size={18} /></span>}</span>
       <span className="bill-main">
         <span className="bill-title">{billTitle(b, records, lang)}</span>
         <span className="bill-sub">{sub}</span>

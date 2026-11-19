@@ -742,3 +742,11 @@ label.bill { cursor: pointer; }
 .select-btn > svg:last-child { color: var(--muted); flex: none; }
 .caticon.ph.sm { width: 26px; height: 26px; }
 .pick-list .sec-title { margin: 16px 16px 6px; }
+
+/* Bank and e-wallet logos: always on white (the logos are made for it), with a ring for light surfaces. */
+.caticon.brand { background: #fff; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08); overflow: hidden; }
+.caticon.brand img { width: 82%; height: 82%; object-fit: contain; display: block; pointer-events: none; }
+.bill-ic { position: relative; display: inline-grid; flex: none; }
+.bill-badge { position: absolute; right: -4px; bottom: -4px; border-radius: 6px; box-shadow: 0 0 0 2px var(--surface); }
+.bill-badge .caticon { border-radius: 6px; }
+.icon-opt .caticon.brand { border-radius: var(--r-sm); }

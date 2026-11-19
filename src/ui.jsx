@@ -21,7 +21,12 @@ export function useLiveAnchor() {
   return [st.at, set];
 }
 import { pushDialog } from './native.js';
-import { iconShapes, iconName, iconsByGroup, ICON_GROUPS, DEFAULT_ICONS } from './icons.js';
+import { iconShapes, iconName, iconsByGroup, brandsByGroup, BRAND_MAP, ICON_GROUPS, DEFAULT_ICONS } from './icons.js';
+
+// Logo files by key; Vite turns each into a bundled URL, so they load offline in the app too.
+const LOGOS = Object.fromEntries(Object.entries(import.meta.glob('./brands/*.svg', { eager: true, query: '?url', import: 'default' }))
+  .map(([p, url]) => [p.slice(9, -4), url]));
+export const brandSrc = (key) => (BRAND_MAP[key] && LOGOS[key]) || null;
 
 export const LangCtx = createContext('id');
 export function useT() {
@@ -158,7 +163,10 @@ export function Logo({ small }) {
 
 // A record's icon on a tile tinted with its colour. `icon` is a key from the drawn set, or a ready
 // element (the transfer arrows). Unknown values and old emoji draw the fallback icon, never text.
+// Bank and e-wallet keys draw their logo on a white tile instead.
 export function CatIcon({ icon, color = '#888888', size = 40 }) {
+  const logo = typeof icon === 'string' && brandSrc(icon);
+  if (logo) return <span className="caticon brand" style={{ width: size, height: size }}><img src={logo} alt="" draggable="false" /></span>;
   return (
     <span className="caticon" style={{ width: size, height: size, background: color + '33' }}>
       {React.isValidElement(icon) ? icon : <Icon name={typeof icon === 'string' ? icon : ''} size={Math.round(size * 0.5)} />}
@@ -398,14 +406,19 @@ export const dayKey = (ms) => {
 // Data colours come from the design system's gradient pairs and semantic scale.
 export const COLORS = ['#0070f3', '#00dfd8', '#50e3c2', '#29bc9b', '#7928ca', '#ff0080', '#eb367f', '#ff4d4d', '#f5a623', '#f9cb28', '#888888'];
 const GROUPED = iconsByGroup();
-const FLAT = GROUPED.flatMap((g) => g.icons.map((i) => i.key));
+// Logo groups go first where they are offered (accounts), and only logos that have a file.
+const WITH_BRANDS = [...brandsByGroup().map((g) => ({ ...g, icons: g.icons.filter((i) => LOGOS[i.key]) })).filter((g) => g.icons.length), ...GROUPED];
 
 // The drawn icons under their group headings, as one radio group with a single tab stop:
 // arrows move (up and down by a row of the grid), Home and End jump, Enter or Space selects.
-export function IconPicker({ icon, color, onIcon, onColor }) {
+// `brands` adds the bank and e-wallet logos; picking one also takes the brand colour.
+export function IconPicker({ icon, color, onIcon, onColor, brands }) {
   const t = useT(); const lang = useContext(LangCtx);
   const ref = useRef(null);
+  const groups = brands ? WITH_BRANDS : GROUPED;
+  const FLAT = groups.flatMap((g) => g.icons.map((i) => i.key));
   const current = FLAT.includes(icon) ? icon : null;
+  const pick = (key) => { onIcon(key); if (BRAND_MAP[key] && onColor) onColor(BRAND_MAP[key].color); };
   const [focusKey, setFocusKey] = useState(current || FLAT[0]);
   const move = (e) => {
     const opts = [...ref.current.querySelectorAll('[role="radio"]')];
@@ -414,7 +427,7 @@ export function IconPicker({ icon, color, onIcon, onColor }) {
     // Columns of the grid this option sits in, read from the layout so it follows the screen width.
     const cols = Math.max(1, opts.filter((o) => o.parentElement === opts[i].parentElement && o.offsetTop === opts[i].offsetTop).length);
     let j = { ArrowRight: i + 1, ArrowLeft: i - 1, ArrowDown: i + cols, ArrowUp: i - cols, Home: 0, End: opts.length - 1 }[e.key];
-    if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); onIcon(opts[i].dataset.key); return; }
+    if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); pick(opts[i].dataset.key); return; }
     if (j == null) return;
     e.preventDefault();
     j = Math.min(opts.length - 1, Math.max(0, j));
@@ -423,16 +436,16 @@ export function IconPicker({ icon, color, onIcon, onColor }) {
   return (
     <div className="picker">
       <div className="icon-groups" role="radiogroup" aria-label={t.icon} ref={ref} onKeyDown={move}>
-        {GROUPED.map((g) => (
+        {groups.map((g) => (
           <div key={g.key} className="icon-group">
             <div className="icon-group-h" aria-hidden="true">{g[lang === 'en' ? 'en' : 'id']}</div>
             <div className="icon-grid">
               {g.icons.map((ic) => (
                 <button key={ic.key} type="button" role="radio" data-key={ic.key} aria-checked={current === ic.key}
                   aria-label={iconName(ic.key, lang)} title={iconName(ic.key, lang)} tabIndex={focusKey === ic.key ? 0 : -1}
-                  className={`icon-opt ${current === ic.key ? 'on' : ''}`} style={current === ic.key ? { background: (color || '#888888') + '33' } : undefined}
-                  onClick={() => { setFocusKey(ic.key); onIcon(ic.key); }} onFocus={() => setFocusKey(ic.key)}>
-                  <Icon name={ic.key} size={22} />
+                  className={`icon-opt ${current === ic.key ? 'on' : ''}`} style={current === ic.key && !BRAND_MAP[ic.key] ? { background: (color || '#888888') + '33' } : undefined}
+                  onClick={() => { setFocusKey(ic.key); pick(ic.key); }} onFocus={() => setFocusKey(ic.key)}>
+                  {BRAND_MAP[ic.key] ? <CatIcon icon={ic.key} size={32} /> : <Icon name={ic.key} size={22} />}
                 </button>
               ))}
             </div>

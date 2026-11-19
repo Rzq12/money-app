@@ -141,7 +141,29 @@ export const ICON_LIST = [
 // Drawn for an unknown key, an empty value or an emoji left over from older data.
 export const FALLBACK_SHAPES = [['r', 4, 4, 16, 16, 4], ['dot', 12, 12, 1.2]];
 
-export const ICON_MAP = Object.fromEntries(ICON_LIST.map((i) => [i.key, i]));
+// Bank and e-wallet logos for accounts: official SVGs in src/brands/<key>.svg, drawn on a white tile.
+// Stored in the account's `icon` like any key; builds that lack them draw the fallback icon.
+// `color` is the brand colour, given to the account when its logo is picked.
+export const BRAND_GROUPS = [
+  { key: 'bank', id: 'Bank', en: 'Banks' },
+  { key: 'ewallet', id: 'E-wallet', en: 'E-wallets' },
+];
+const bank = (key, name, color) => ({ key: `bank-${key}`, group: 'bank', id: name, en: name, color });
+const ew = (key, name, color) => ({ key: `ew-${key}`, group: 'ewallet', id: name, en: name, color });
+export const BRAND_LIST = [
+  bank('bca', 'BCA', '#0060af'), bank('mandiri', 'Mandiri', '#003a70'), bank('bri', 'BRI', '#00529c'),
+  bank('bni', 'BNI', '#f15a22'), bank('bsi', 'BSI', '#00a39d'), bank('cimb', 'CIMB Niaga', '#790008'),
+  bank('permata', 'Permata', '#0064ff'), bank('danamon', 'Danamon', '#f05a24'), bank('btn', 'BTN', '#015bfd'),
+  bank('jago', 'Jago', '#feae27'), bank('seabank', 'SeaBank', '#ea5f00'),
+  bank('jenius', 'Jenius', '#009bd2'), bank('neo', 'Neo Commerce', '#ffcd00'), bank('superbank', 'Superbank', '#afee00'),
+  ew('gopay', 'GoPay', '#00aed6'), ew('ovo', 'OVO', '#4b2489'), ew('dana', 'DANA', '#008ceb'),
+  ew('shopeepay', 'ShopeePay', '#ee4d2d'), ew('linkaja', 'LinkAja', '#e82529'),
+];
+export const BRAND_MAP = Object.fromEntries(BRAND_LIST.map((i) => [i.key, i]));
+export const brandsByGroup = () => BRAND_GROUPS.map((g) => ({ ...g, icons: BRAND_LIST.filter((i) => i.group === g.key) }));
+
+// Every known key, logos included, so store.js keeps a logo picked for a built-in account.
+export const ICON_MAP = Object.fromEntries([...ICON_LIST, ...BRAND_LIST].map((i) => [i.key, i]));
 export const iconShapes = (key) => ICON_MAP[key]?.d || FALLBACK_SHAPES;
 export const iconName = (key, lang) => ICON_MAP[key]?.[lang === 'en' ? 'en' : 'id'] || '';
 export const iconsByGroup = () => ICON_GROUPS.map((g) => ({ ...g, icons: ICON_LIST.filter((i) => i.group === g.key) }));

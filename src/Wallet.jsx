@@ -55,7 +55,7 @@ function AccountEditor({ acc, onClose }) {
         <label className="field"><span>{t.currency}</span>
           <select value={currency} onChange={(e) => setCurrency(e.target.value)}>{CURRENCIES.map((c) => <option key={c}>{c}</option>)}</select></label>
         <label className="field"><span>{t.note}</span><input value={note} onChange={(e) => setNote(e.target.value)} maxLength={80} /></label>
-        <div className="field"><span>{t.icon}</span><IconPicker icon={icon} color={color} onIcon={setIcon} onColor={setColor} /></div>
+        <div className="field"><span>{t.icon}</span><IconPicker icon={icon} color={color} onIcon={setIcon} onColor={setColor} brands /></div>
         {err && <div className="err">{err}</div>}
       </div>
     </Sheet>
