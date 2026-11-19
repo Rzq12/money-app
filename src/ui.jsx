@@ -36,6 +36,14 @@ export function useT() {
 // Counts a number up to its new value (from 0 on first render) so a changed total is noticed.
 // Display only: callers still use the real value everywhere else. Instant under reduced motion.
 export const reduceMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+// Which way a tab or period moved, as a class for content that slides in from that side ("Smooth Tabs"):
+// 'slide-next' when `pos` grew, 'slide-prev' when it shrank, '' until it first changes. Key the content
+// by the same value so the new content mounts and plays the entrance.
+export function useSlideDir(pos) {
+  const prev = useRef(pos); const dir = useRef('');
+  if (prev.current !== pos) { dir.current = pos > prev.current ? 'slide-next' : 'slide-prev'; prev.current = pos; }
+  return dir.current;
+}
 // Plays a list row's exit (M9) and then runs `done`, which removes the record. Rows that are not on
 // screen, and reduced motion, skip straight to `done`.
 export function leave(id, done) {

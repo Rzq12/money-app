@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { store, useStore, live, nameOf, uid } from './store.js';
-import { useT, CatIcon, Icon, Sheet, Segmented, IconPicker, confirmAsk, reduceMotion } from './ui.jsx';
+import { useT, CatIcon, Icon, Sheet, Segmented, IconPicker, confirmAsk, reduceMotion, useSlideDir } from './ui.jsx';
 import { useSync, signIn, signUp, resetPassword, signOut, syncNow, configured } from './sync.js';
 import { Logo } from './ui.jsx';
 import { saveFile } from './native.js';
@@ -97,13 +97,14 @@ export function AuthScreen() {
 export function NamedListSheet({ kind, title, onClose }) {
   const t = useT(); const { records, settings } = useStore(); const lang = settings.lang;
   const [ctype, setCtype] = useState('expense');
+  const dir = useSlideDir(ctype === 'expense' ? 0 : 1); // expense ↔ income list slides toward the tab picked
   const [edit, setEdit] = useState(null);
   let items = live(records, kind);
   if (kind === 'category') items = items.filter((c) => c.type === ctype);
   return (
     <Sheet open onClose={onClose} title={title} full actions={<button className="text-btn strong icon" aria-label={t.add} onClick={() => setEdit({})}><Icon name="plus" size={16} /></button>}>
       {kind === 'category' && <div className="toolbar"><Segmented value={ctype} onChange={setCtype} options={[{ value: 'expense', label: t.expense }, { value: 'income', label: t.income }]} /></div>}
-      <div className="card">
+      <div key={ctype} className={`card ${dir}`}>
         {items.map((x) => (
           <button key={x.id} className="row" onClick={() => setEdit(x)}>
             <CatIcon icon={x.icon} color={x.color || '#ff0080'} size={36} />

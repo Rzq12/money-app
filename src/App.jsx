@@ -12,6 +12,7 @@ import { Budgets, Goals, Debts, Recurring, Rules } from './Money.jsx';
 import { Portfolio, Split, Chat, Kpr, Pph } from './Tools.jsx';
 import { ImportPage, BackupPage } from './Import.jsx';
 import { Settings, Hub } from './Settings.jsx';
+import ChatBubble from './ChatBubble.jsx';
 
 // [path, icon, label key]. One inner array per block of the sidebar and of the "Lainnya" menu.
 export const NAV = [
@@ -25,7 +26,8 @@ function readRoute() {
   let h = location.hash.replace(/^#\/?/, '');
   if (h in LEGACY) { h = LEGACY[h]; history.replaceState(null, '', `#/${h}`); }
   const [path, q = ''] = h.split('?');
-  return { path, tab: new URLSearchParams(q).get('tab') };
+  const p = new URLSearchParams(q);
+  return { path, tab: p.get('tab'), ask: p.get('q'), focus: p.has('focus') };
 }
 
 const INK = '#171717';
@@ -82,7 +84,7 @@ function Shell() {
 
   const openBill = (b) => setEditor({ bill: b });
   const add = () => setEditor({});
-  const { path, tab } = route;
+  const { path, tab, ask, focus } = route;
   const link = (p, icon, key, size, on = path === p) => (
     <a key={p} href={`#/${p}`} className={on ? 'on' : ''} aria-current={on ? 'page' : undefined}>
       <Icon name={icon} size={size} /><span>{t[key]}</span>
@@ -98,7 +100,7 @@ function Shell() {
   else if (path === 'berulang') page = <Recurring />;
   else if (path === 'aturan') page = <Rules />;
   else if (path === 'split') page = <Split />;
-  else if (path === 'chat') page = <Chat onOpenBill={openBill} />;
+  else if (path === 'chat') page = <Chat onOpenBill={openBill} ask={ask} focus={focus} />;
   else if (path === 'import') page = <ImportPage />;
   else if (path === 'backup') page = <BackupPage />;
   else if (path === 'tools/kalkulator-kpr') page = <Kpr />;
@@ -130,6 +132,7 @@ function Shell() {
         {link('pengaturan?tab=dompet', 'wallet', 'wallet', 22, walletOn)}
         {link('lainnya', 'grid', 'more', 22, !['', 'laporan'].includes(path) && !walletOn)}
       </nav>
+      {path === '' && <ChatBubble />}
       {editor && <BillEditor bill={editor.bill} defaultTime={editor.time} onClose={() => setEditor(null)} />}
       <ConfirmHost />
     </div>

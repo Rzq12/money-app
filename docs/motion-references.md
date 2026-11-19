@@ -192,7 +192,9 @@ Dasar untuk lapisan animasi Kasku+. Setiap pola punya ID (`M1`, `M2`, ...). Comm
 - **M28:** indikator mengetik adalah bubble sendiri yang hilang saat jawaban datang, tidak diisi ulang. Mengisi bubble yang sama butuh mengubah cara pesan disimpan.
 - **M33:** indikator `Segmented` menganimasikan `transform` dan `width`. Lebar label berbeda-beda, dan `scaleX` akan memipihkan sudut bulatnya.
 - **M38:** badge sinkron memudar antar status dan "bernapas" saat sinkron. Ikon cek kecil tidak ditambahkan, karena teks "Tersinkron" sudah menjelaskan.
+- **M8, M12 ("Smooth Tabs"):** isi tab masuk dari arah tab yang dipilih (geser 16px + fade, `--dur-2`), searah dengan indikator `Segmented`. Dipakai di Detail/Kalender, tab Pengaturan, jenis transaksi di BillEditor, dan daftar kategori. Isi lama langsung diganti, tanpa animasi keluar, sama seperti pindah halaman (M1). Dibuat dengan CSS dan hook `useSlideDir()`, bukan Motion/AnimatePresence, karena aturan proyek melarang dependency baru.
 - **M43:** ring fokus tetap memakai `--focus`, bukan accent. Accent bisa pink terang dengan kontras rendah, sedangkan `--focus` sudah dipilih untuk aksesibilitas.
+- **M44 (Expandable Chat Bubble, ditambah setelah rencana):** tombol chat bulat di Buku, di atas bottom nav. Saat diketuk, atau 1,2 detik setelah Buku pertama kali dibuka dalam satu sesi app, pill saran membuka ke atas satu per satu (geser 8px + scale .94 → 1, jeda 50ms, `--dur-2`), dan ikon chat berputar jadi ✕. Kalau dibuka otomatis dan tidak disentuh, pill menutup lagi setelah 6 detik. Pill membuka halaman Chat: "Ada yang ingin ditanyakan?" langsung memfokuskan input, dua pill lain langsung mengirim pertanyaannya. Kalau AI mati, hanya pill pertama yang muncul.
 
 ## Sengaja tidak dianimasikan
 

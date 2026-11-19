@@ -388,12 +388,13 @@ export function Split() {
 // ---------- chat: AI understands sentences and questions; keyword rules when AI is unavailable ----------
 const QUESTION = /\?\s*$|^(berapa|apa|kapan|mana|bagaimana|gimana|apakah|bandingkan|tampilkan|how|what|when|which|compare|show)\b/i;
 
-export function Chat({ onOpenBill }) {
+// `ask` is a message to send on arrival (from the chat bubble on the Ledger); `focus` opens the keyboard.
+export function Chat({ onOpenBill, ask, focus }) {
   const t = useT(); const { records, settings } = useStore(); const lang = settings.lang;
   const ai = useAi();
   const [msgs, setMsgs] = useState(() => { try { return JSON.parse(localStorage.getItem(CHAT_KEY)) || []; } catch { return []; } });
   const [text, setText] = useState(''); const [busy, setBusy] = useState(false);
-  const end = useRef(null);
+  const end = useRef(null); const input = useRef(null);
   useEffect(() => { try { localStorage.setItem(CHAT_KEY, JSON.stringify(msgs.slice(-60))); } catch { /* storage full: history is a convenience */ } end.current?.scrollIntoView({ block: 'end' }); }, [msgs]);
   const add = (m) => setMsgs((list) => [...list, m]);
   const lastAcc = () => (records[settings.lastAccountId] && !records[settings.lastAccountId].deleted ? settings.lastAccountId : live(records, 'account')[0]?.id);
@@ -409,9 +410,13 @@ export function Chat({ onOpenBill }) {
   const setState = (mi, ids, state) => setMsgs((list) => list.map((m, i) => (i !== mi ? m : { ...m, proposals: m.proposals.map((p) => (ids.includes(p.id) ? { ...p, state } : p)) })));
   const save = (mi, list) => { const ok = list.filter(valid); if (ok.length) store.putMany(ok.map(asBill)); setState(mi, ok.map((p) => p.id), 'saved'); };
 
-  async function send(e) {
-    e.preventDefault();
-    const said = text.trim();
+  useEffect(() => {
+    if (ask || focus) history.replaceState(null, '', '#/chat'); // a reload or back must not send it again
+    if (ask) submit(ask.trim().slice(0, 400)); else if (focus) input.current?.focus();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function send(e) { e.preventDefault(); submit(text.trim()); }
+  async function submit(said) {
     if (!said || busy) return;
     setText(''); add({ me: said }); setBusy(true);
     const isQuestion = QUESTION.test(said);
@@ -482,7 +487,7 @@ export function Chat({ onOpenBill }) {
         <div ref={end} />
       </div>
       <form className="chat-in" onSubmit={send}>
-        <input value={text} onChange={(e) => setText(e.target.value)} placeholder={t.chatPh} aria-label={t.chat} maxLength={400} autoComplete="off" />
+        <input ref={input} value={text} onChange={(e) => setText(e.target.value)} placeholder={t.chatPh} aria-label={t.chat} maxLength={400} autoComplete="off" />
         <button className="btn primary" type="submit" aria-label={t.chatSend} disabled={!text.trim() || busy}><Icon name="send" size={16} /></button>
       </form>
     </div>
