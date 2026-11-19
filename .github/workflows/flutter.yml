@@ -45,6 +45,10 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      # Plugins (connectivity_plus) use iOS 26 SDK APIs; the image's default Xcode is older.
+      - uses: maxim-lobanov/setup-xcode@v1
+        with: { xcode-version: latest-stable }
+      - run: xcodebuild -version
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
       - run: flutter build ios --simulator --debug --no-codesign --dart-define=SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }} --dart-define=SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}
