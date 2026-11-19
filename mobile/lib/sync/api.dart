@@ -14,7 +14,7 @@ class ApiException implements Exception {
 }
 
 class Api {
-  Api(this._client, {required String baseUrl, required this.anonKey, required this.token})
+  Api(this._client, {required String baseUrl, required this.anonKey, required this.token, this.timeout = const Duration(seconds: 30)})
       : baseUrl = baseUrl.replaceAll(RegExp(r'/+$'), '');
 
   final http.Client _client;
@@ -24,15 +24,19 @@ class Api {
   /// Current access token, sent as the bearer on authorized calls.
   final String? Function() token;
 
+  /// Longest wait for a response; a stalled connection otherwise blocks sync until restart.
+  final Duration timeout;
+
   /// Sends one request and returns the decoded JSON body (null when empty, the raw text when the
-  /// body is not JSON). Throws [ApiException] on a non-2xx status; network errors pass through.
+  /// body is not JSON). Throws [ApiException] on a non-2xx status and [TimeoutException] when the
+  /// server does not answer within [timeout]; network errors pass through.
   Future<Object?> call(String path, {String method = 'GET', Object? body, bool auth = true, Map<String, String> headers = const {}}) async {
     final h = {'apikey': anonKey, 'Content-Type': 'application/json', ...headers};
     final tok = auth ? token() : null;
     if (tok != null) h['Authorization'] = 'Bearer $tok';
     final req = http.Request(method, Uri.parse(baseUrl + path))..headers.addAll(h);
     if (body != null) req.body = jsonEncode(body);
-    final res = await http.Response.fromStream(await _client.send(req));
+    final res = await http.Response.fromStream(await _client.send(req).timeout(timeout)).timeout(timeout);
     final text = utf8.decode(res.bodyBytes);
     Object? data;
     try {

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:material_ui/material_ui.dart';
 
+import '../data/store.dart' show StorageFullException;
 import '../i18n.dart';
 import '../sync/api.dart';
 import '../sync/session.dart';
@@ -75,6 +76,8 @@ class _AuthScreenState extends State<AuthScreen> {
           _ok = t('authResetSent');
           _mode = _Mode.signIn;
       }
+    } on StorageFullException {
+      _error = t('storageFull');
     } on ApiException catch (e) {
       _error = _explain(e);
     } on SocketException {

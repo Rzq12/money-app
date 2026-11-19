@@ -170,6 +170,137 @@ void main() {
     expect(b.store.records['gone']!['deleted'], isTrue);
   });
 
+  test('pull with a full disk does not skip rows', () async {
+    final server = FakePostgrest();
+    final a = Device(server);
+    await a.signIn('u1');
+    server.seed('bills', 'u1', {'id': 'x', 'type': 'expense', 'amount': 1, 'updated_at': 100, 'deleted': false});
+    server.advance(const Duration(minutes: 10));
+    server.seed('bills', 'u1', {'id': 'y', 'type': 'expense', 'amount': 2, 'updated_at': 100, 'deleted': false});
+    a.disk.full = true;
+    await a.engine.syncNow();
+    expect(a.engine.status.phase, SyncPhase.error);
+    a.disk.full = false;
+    await a.engine.syncNow();
+    expect(a.store.records['x'], isNotNull);
+    expect(a.store.records['y'], isNotNull);
+  });
+
+  test('switching accounts with a full disk pushes nothing into the new account', () async {
+    final server = FakePostgrest();
+    final a = Device(server);
+    await a.signIn('u1');
+    a.store.put(bill('x'));
+    a.disk.full = true;
+    await expectLater(a.signIn('u2'), throwsA(isA<StorageFullException>()));
+    expect(a.auth.session, isNull);
+    expect(server.row('bills', 'u2', 'x'), isNull);
+  });
+
+  test('a session for another account never pushes local records', () async {
+    final server = FakePostgrest();
+    final a = Device(server);
+    await a.signIn('u1');
+    a.store.put(bill('x'));
+    await a.auth.signIn('u2', 'pw'); // a background sync can start before afterSignIn resets the copy
+    await a.engine.syncNow();
+    expect(server.row('bills', 'u2', 'x'), isNull);
+  });
+
+  test('sign-out during a sync keeps the old account out of the device', () async {
+    final server = FakePostgrest();
+    final a = Device(server);
+    await a.signIn('u1');
+    a.store.put(bill('x'));
+    final gate = Completer<void>();
+    final reached = Completer<void>();
+    server.beforeUpsert = (table) async {
+      if (table != 'bills') return;
+      reached.complete();
+      await gate.future;
+    };
+    final run = a.engine.syncNow();
+    await reached.future;
+    await a.engine.signOut();
+    server.beforeUpsert = null;
+    gate.complete();
+    await run;
+    expect(a.store.records['x'], isNull);
+    expect(a.store.dirtyIds, isEmpty);
+  });
+
+  test('switching accounts during a sync sends nothing of the old account with the new token', () async {
+    final server = FakePostgrest();
+    final a = Device(server);
+    await a.signIn('u1');
+    a.store.put(bill('x'));
+    final gate = Completer<void>();
+    final reached = Completer<void>();
+    server.beforeUpsert = (table) async {
+      if (table != 'bills') return;
+      reached.complete();
+      await gate.future;
+    };
+    final run = a.engine.syncNow();
+    await reached.future;
+    final switching = a.signIn('u2');
+    server.beforeUpsert = null;
+    gate.complete();
+    await run;
+    await switching;
+    await a.engine.syncNow();
+    expect(server.rows('bill_tags', 'u2'), isEmpty);
+    expect(server.row('bills', 'u2', 'x'), isNull);
+    expect(a.store.records['x'], isNull);
+  });
+
+  test('settings changed during their upsert are pushed next time', () async {
+    final server = FakePostgrest();
+    final a = Device(server);
+    await a.signIn('u1');
+    a.store.setSettings({'currency': 'USD'});
+    final gate = Completer<void>();
+    final reached = Completer<void>();
+    server.beforeUpsert = (table) async {
+      if (table != 'user_settings') return;
+      reached.complete();
+      await gate.future;
+    };
+    final run = a.engine.syncNow();
+    await reached.future;
+    a.store.setSettings({'currency': 'EUR'});
+    server.beforeUpsert = null;
+    gate.complete();
+    await run;
+    expect(a.engine.status.pending, 1);
+    await a.engine.syncNow();
+    expect(server.rows('user_settings', 'u1').single['currency'], 'EUR');
+  });
+
+  test('a settings edit wins over a settings row stamped by a clock that runs ahead', () async {
+    final server = FakePostgrest();
+    final ahead = DateTime.now().millisecondsSinceEpoch + 3600 * 1000;
+    server.seed('user_settings', 'u1', {'user_id': 'u1', 'lang': 'id', 'currency': 'SGD', 'dark': false, 'updated_at': ahead});
+    final a = Device(server);
+    await a.signIn('u1');
+    expect(a.store.settings['currency'], 'SGD');
+    a.store.setSettings({'currency': 'USD'});
+    await a.engine.syncNow();
+    expect(server.rows('user_settings', 'u1').single['currency'], 'USD');
+    expect(a.store.settings['currency'], 'USD');
+  });
+
+  test('a wrong-shaped sync state file does not stop sync', () async {
+    final server = FakePostgrest();
+    final a = Device(server);
+    await a.signIn('u1');
+    a.disk.entries['sync'] = '{"owner":5,"cursors":[]}';
+    final again = SyncEngine(a.store, a.api, a.auth, a.disk);
+    a.store.put(bill('z'));
+    await again.syncNow();
+    expect(server.row('bills', 'u1', 'z'), isNotNull);
+  });
+
   test('sync state survives a restart', () async {
     final server = FakePostgrest();
     final a = Device(server);

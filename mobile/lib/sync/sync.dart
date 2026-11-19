@@ -77,12 +77,18 @@ class SyncEngine extends ChangeNotifier {
     if (raw == null) return;
     try {
       final m = Map<String, Object?>.from(jsonDecode(raw) as Map);
-      _owner = m['owner'] as String?;
-      _cursors = Map<String, String>.from((m['cursors'] as Map?) ?? const {});
-      _lastSync = (m['lastSync'] as num?)?.toInt();
-      _settingsAt = (m['settingsAt'] as num?) ?? 0;
+      final owner = m['owner'] as String?;
+      final cursors = {for (final e in ((m['cursors'] as Map?) ?? const {}).entries) e.key as String: e.value as String};
+      final lastSync = (m['lastSync'] as num?)?.toInt();
+      final settingsAt = (m['settingsAt'] as num?) ?? 0;
+      // Assigned only once every field parsed, so a bad file never leaves half a state behind.
+      _owner = owner;
+      _cursors = cursors;
+      _lastSync = lastSync;
+      _settingsAt = settingsAt;
       _settingsDirty = m['settingsDirty'] == true;
-    } on FormatException {
+    } catch (_) {
+      // Unreadable or wrong shape: keep it aside and start over (a full pull; owner adopted on sync).
       _disk.keepAside(_stateKey, raw);
     }
   }
@@ -128,7 +134,11 @@ class SyncEngine extends ChangeNotifier {
     if (now != _lastSettings) {
       _lastSettings = now;
       if (!_applyingRemote && auth.session != null) {
-        _settingsAt = _now();
+        // Stamped after the version it replaces (same millisecond, or a row from a clock that
+        // runs ahead), so the server keeps it and an upsert in flight never clears it.
+        final now = _now();
+        final prev = _settingsAt.floor();
+        _settingsAt = now > prev ? now : prev + 1;
         _settingsDirty = true;
         _saveState();
         _schedule();
@@ -140,12 +150,16 @@ class SyncEngine extends ChangeNotifier {
   // ---------- account ----------
   /// After a sign-in or sign-up: a different account (or the first sign-in) starts from a clean
   /// local copy, so one account's records are never pushed into another.
+  ///
+  /// Throws [StorageFullException] (and drops the new session) when the old copy cannot be cleared.
   Future<void> afterSignIn(Session s) async {
+    _gen++;
     if (_owner != s.userId) {
-      _applyingRemote = true;
-      store.resetAll();
-      _applyingRemote = false;
-      _lastSettings = _settingsKey();
+      if (!_resetStore()) {
+        await auth.expire();
+        _setStatus(phase: SyncPhase.off);
+        throw const StorageFullException();
+      }
       _resetState(owner: s.userId);
     }
     _setStatus(phase: SyncPhase.idle, error: '');
@@ -158,21 +172,27 @@ class SyncEngine extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    _gen++;
     await auth.signOut();
+    // When the reset cannot be written the owner is kept, so the next sign-in to another account
+    // tries the reset again before anything is synced.
+    if (_resetStore()) _resetState();
+    _setStatus(phase: SyncPhase.off, error: '');
+  }
+
+  /// Back to the starter data without treating the reset settings as a local edit.
+  bool _resetStore() {
     _applyingRemote = true;
-    store.resetAll();
+    final ok = store.resetAll();
     _applyingRemote = false;
     _lastSettings = _settingsKey();
-    _resetState();
-    _setStatus(phase: SyncPhase.off, error: '');
+    return ok;
   }
 
   /// "Erase all data" while signed in: empties this device and downloads the cloud copy again.
   Future<void> resetLocal() async {
-    _applyingRemote = true;
-    store.resetAll();
-    _applyingRemote = false;
-    _lastSettings = _settingsKey();
+    _gen++;
+    if (!_resetStore()) return;
     _resetState(owner: _owner);
     _setStatus();
     if (auth.session != null) await syncNow();
@@ -241,19 +261,35 @@ class SyncEngine extends ChangeNotifier {
   }
 
   Future<void> _syncOnce() async {
-    if (!configured || auth.session == null) return;
+    final session = auth.session;
+    if (!configured || session == null) return;
+    // The local copy belongs to one account. A session for another account (between sign-in and
+    // afterSignIn's reset) must never push this copy or pull into it.
+    if (_owner == null) {
+      _owner = session.userId; // state file lost or damaged: the session on this device owns it
+      _saveState();
+    } else if (_owner != session.userId) {
+      return;
+    }
+    _syncGen = _gen;
     _setStatus(phase: SyncPhase.syncing, error: '');
     try {
       if (!await auth.ensureFresh()) {
         _setStatus(phase: SyncPhase.off);
         return;
       }
+      _alive();
       await _push();
       await _pull();
       _lastSync = _now();
       _saveState();
       _setStatus(phase: SyncPhase.idle, error: '');
       _retryDelay = 2000;
+    } on _Superseded {
+      // The account changed mid-sync; the run queued by that change starts fresh.
+      return;
+    } on StorageFullException {
+      _retry(SyncPhase.error, 'storage full');
     } on ApiException catch (e) {
       if (e.status == 401) {
         await auth.expire();
@@ -273,7 +309,23 @@ class SyncEngine extends ChangeNotifier {
     _retryDelay = (_retryDelay * 2).clamp(0, _maxRetry);
   }
 
-  Future<List<DbRow>> _get(String path) async => [for (final r in (await api.call(path) as List?) ?? const []) Map<String, Object?>.from(r as Map)];
+  int _gen = 0;
+  int _syncGen = 0;
+
+  /// Stops a sync whose account changed (sign-in, sign-out, reset) since it started.
+  void _alive() {
+    if (_syncGen != _gen) throw const _Superseded();
+  }
+
+  /// A REST call made by a sync run: never sent, and its answer never used, for an old account.
+  Future<Object?> _call(String path, {String method = 'GET', Object? body, Map<String, String> headers = const {}}) async {
+    _alive();
+    final res = await api.call(path, method: method, body: body, headers: headers);
+    _alive();
+    return res;
+  }
+
+  Future<List<DbRow>> _get(String path) async => [for (final r in (await _call(path) as List?) ?? const []) Map<String, Object?>.from(r as Map)];
 
   Future<({List<DbRow> rows, String? cursor})> _pullTable(String table) async {
     final rows = <DbRow>[];
@@ -336,6 +388,7 @@ class SyncEngine extends ChangeNotifier {
           return sameContent(cur, r) ? const <Rec>[] : [{...r, 'updatedAt': _n(cur['updatedAt']) + 0.001}];
         }(),
     ]);
+    if (store.writeFailed) throw const StorageFullException();
 
     final settingsRows = await _get('/rest/v1/user_settings?select=*');
     final s = settingsRows.isEmpty ? null : settingsRows.first;
@@ -349,6 +402,7 @@ class SyncEngine extends ChangeNotifier {
         if (s['book_id'] != null) 'bookId': s['book_id'],
       });
       _applyingRemote = false;
+      if (store.writeFailed) throw const StorageFullException();
       _lastSettings = _settingsKey();
       _settingsAt = _n(s['updated_at']);
     }
@@ -359,12 +413,16 @@ class SyncEngine extends ChangeNotifier {
     final userId = auth.session!.userId;
     if (_settingsDirty) {
       final st = store.settings;
+      final at = _settingsAt;
       // tz is left out so the upsert keeps the zone the web app (or the default) stored.
-      await api.call('/rest/v1/user_settings?on_conflict=user_id', method: 'POST', headers: {'Prefer': 'resolution=merge-duplicates,return=minimal'}, body: [
-        {'user_id': userId, 'lang': st['lang'], 'currency': st['currency'], 'accent': st['theme'], 'dark': st['dark'] == true, 'book_id': st['bookId'], 'updated_at': _settingsAt.round()},
+      await _call('/rest/v1/user_settings?on_conflict=user_id', method: 'POST', headers: {'Prefer': 'resolution=merge-duplicates,return=minimal'}, body: [
+        {'user_id': userId, 'lang': st['lang'], 'currency': st['currency'], 'accent': st['theme'], 'dark': st['dark'] == true, 'book_id': st['bookId'], 'updated_at': at.round()},
       ]);
-      _settingsDirty = false;
-      _saveState();
+      // A settings edit made while this upsert was in flight stays queued.
+      if (_settingsAt == at) {
+        _settingsDirty = false;
+        _saveState();
+      }
     }
     final recs = store.records;
     final ids = store.dirtyIds.where((id) => recs[id] != null && kinds.containsKey(recs[id]!['kind'])).toList();
@@ -376,7 +434,7 @@ class SyncEngine extends ChangeNotifier {
         final chunk = list.sublist(i, (i + _pushChunk).clamp(0, list.length));
         // The server keeps a row whose updated_at is newer than the one sent (kasku_lww) and leaves
         // it out of the reply. Those records take the server copy; only written rows get children.
-        final written = await api.call('/rest/v1/${spec.table}?on_conflict=user_id,id&select=id',
+        final written = await _call('/rest/v1/${spec.table}?on_conflict=user_id,id&select=id',
             method: 'POST', headers: {'Prefer': 'resolution=merge-duplicates,return=representation'}, body: [for (final r in chunk) toRow(r, spec, userId)]);
         final ok = {for (final x in (written as List?) ?? const []) (x as Map)['id']};
         final lost = [for (final r in chunk) if (!ok.contains(r['id'])) r['id']! as String];
@@ -385,12 +443,12 @@ class SyncEngine extends ChangeNotifier {
         for (final ch in spec.children) {
           for (var j = 0; j < kept.length; j += _childChunk) {
             final part = kept.sublist(j, (j + _childChunk).clamp(0, kept.length));
-            await api.call('/rest/v1/${ch.table}?${ch.fk}=${_q(_inList(part.map((r) => r['id']! as String)))}', method: 'DELETE', headers: {'Prefer': 'return=minimal'});
+            await _call('/rest/v1/${ch.table}?${ch.fk}=${_q(_inList(part.map((r) => r['id']! as String)))}', method: 'DELETE', headers: {'Prefer': 'return=minimal'});
             final rows = [
               for (final r in part)
                 for (final c in ch.rows(r)) {'user_id': userId, ch.fk: r['id'], 'updated_at': _n(r['updatedAt']).round(), ...c},
             ];
-            if (rows.isNotEmpty) await api.call('/rest/v1/${ch.table}', method: 'POST', headers: {'Prefer': 'return=minimal'}, body: rows);
+            if (rows.isNotEmpty) await _call('/rest/v1/${ch.table}', method: 'POST', headers: {'Prefer': 'return=minimal'}, body: rows);
           }
         }
         for (final r in kept) {
@@ -460,4 +518,9 @@ class SyncEngine extends ChangeNotifier {
     _retryTimer?.cancel();
     super.dispose();
   }
+}
+
+/// Thrown inside a sync run whose account changed while it was running.
+class _Superseded implements Exception {
+  const _Superseded();
 }

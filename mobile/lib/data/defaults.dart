@@ -44,7 +44,7 @@ Rec _named(String id, String kind, String idName, String enName, String icon, in
 /// Fixed ids so fresh installs on two devices share the same starter data.
 Map<String, Rec> defaultRecords() {
   final r = <Rec>[
-    _named('book-default', 'book', 'Buku harian', 'Daily ledger', 'book', 0),
+    _named('book-default', 'book', 'Buku harian', 'Daily ledger', 'notebook', 0),
     _named('acc-cash', 'account', 'Tunai', 'Cash', 'cash', 0, {'type': 'cash', 'color': '#29bc9b', 'currency': 'IDR', 'initBalance': 0}),
     _named('acc-bank', 'account', 'Kartu debit', 'Debit card', 'card', 1, {'type': 'debit', 'color': '#0070f3', 'currency': 'IDR', 'initBalance': 0}),
     _named('acc-ewallet', 'account', 'Dompet digital', 'E-wallet', 'ewallet', 2, {'type': 'ewallet', 'color': '#7928ca', 'currency': 'IDR', 'initBalance': 0}),

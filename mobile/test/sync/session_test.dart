@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -96,6 +99,18 @@ void main() {
     expect(s.store.saved, isNull);
   });
 
+  test('a request that never answers times out', () async {
+    final api = Api(MockClient((r) => Completer<http.Response>().future), baseUrl: 'https://x.supabase.co', anonKey: 'anon', token: () => null, timeout: const Duration(milliseconds: 50));
+    await expectLater(api.call('/rest/v1/books'), throwsA(isA<TimeoutException>()));
+  });
+
+  test('an unreadable keystore means signed out, not a crash', () async {
+    final storage = _ThrowingStorage();
+    final store = SecureSessionStore(storage: storage);
+    expect(await store.load(), isNull);
+    expect(storage.deleted, isTrue);
+  });
+
   test('signOut clears the session even when logout fails', () async {
     final s = setup((r) async => throw const SocketException('offline'), session: expired());
     await s.auth.load();
@@ -103,4 +118,33 @@ void main() {
     expect(s.auth.session, isNull);
     expect(s.store.saved, isNull);
   });
+}
+
+/// Keystore that fails to decrypt, as after an Android backup/restore or reinstall.
+class _ThrowingStorage extends FlutterSecureStorage {
+  bool deleted = false;
+
+  @override
+  Future<String?> read({
+    required String key,
+    AppleOptions? iOptions,
+    AndroidOptions? aOptions,
+    LinuxOptions? lOptions,
+    WebOptions? webOptions,
+    AppleOptions? mOptions,
+    WindowsOptions? wOptions,
+  }) async =>
+      throw PlatformException(code: 'Exception', message: 'BAD_DECRYPT');
+
+  @override
+  Future<void> delete({
+    required String key,
+    AppleOptions? iOptions,
+    AndroidOptions? aOptions,
+    LinuxOptions? lOptions,
+    WebOptions? webOptions,
+    AppleOptions? mOptions,
+    WindowsOptions? wOptions,
+  }) async =>
+      deleted = true;
 }

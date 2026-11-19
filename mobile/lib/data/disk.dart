@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 /// Key-value storage for the store's JSON blobs. Writes are synchronous so a change reaches the
@@ -23,7 +24,19 @@ class FileDisk implements Disk {
   @override
   String? read(String key) {
     final f = _file(key);
-    return f.existsSync() ? f.readAsStringSync() : null;
+    if (!f.existsSync()) return null;
+    final bytes = f.readAsBytesSync();
+    try {
+      return utf8.decode(bytes);
+    } on FormatException {
+      // Not text at all (flash corruption): keep the bytes aside as they are, then report it.
+      try {
+        f.copySync(_file('$key.unreadable-${DateTime.now().millisecondsSinceEpoch}').path);
+      } on FileSystemException {
+        // Disk full: the original stays untouched until the next successful save.
+      }
+      rethrow;
+    }
   }
 
   @override

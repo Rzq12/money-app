@@ -33,16 +33,23 @@ abstract class SessionStore {
 
 /// Tokens in the platform keystore (Android Keystore / iOS Keychain).
 class SecureSessionStore implements SessionStore {
+  SecureSessionStore({FlutterSecureStorage storage = const FlutterSecureStorage()}) : _storage = storage;
   static const _key = 'kasku.session';
-  final _storage = const FlutterSecureStorage();
+  final FlutterSecureStorage _storage;
 
   @override
+  /// A keystore that cannot be read (common after an Android backup/restore or reinstall) or a
+  /// damaged entry means signed out: the entry is dropped and the cached records stay.
   Future<Session?> load() async {
-    final raw = await _storage.read(key: _key);
-    if (raw == null) return null;
     try {
-      return Session.fromJson(Map<String, Object?>.from(jsonDecode(raw) as Map));
+      final raw = await _storage.read(key: _key);
+      return raw == null ? null : Session.fromJson(Map<String, Object?>.from(jsonDecode(raw) as Map));
     } catch (_) {
+      try {
+        await _storage.delete(key: _key);
+      } catch (_) {
+        // Nothing more to do; the next sign-in writes a fresh entry.
+      }
       return null;
     }
   }

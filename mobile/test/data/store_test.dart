@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kasku_plus/data/disk.dart';
 import 'package:kasku_plus/data/store.dart';
@@ -11,6 +13,32 @@ void main() {
     expect(store.records.length, 29);
     expect(store.settings['lang'], 'id');
     expect(store.settings['bookId'], 'book-default');
+  });
+
+  test('default ledger icon matches the web app', () {
+    expect(RecordStore(MemoryDisk()).records['book-default']!['icon'], 'notebook');
+  });
+
+  test('records file that is not UTF-8 is kept aside and the app still opens', () {
+    final dir = Directory.systemTemp.createTempSync('kasku');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    File('${dir.path}/records.json').writeAsBytesSync([0x7b, 0x22, 0xff, 0xfe, 0x22]);
+    final store = RecordStore(FileDisk(dir));
+    expect(store.loadErrors, ['records']);
+    expect(store.records['cat-food'], isNotNull);
+    final names = dir.listSync().map((f) => f.uri.pathSegments.last);
+    expect(names.where((n) => n.startsWith('records.unreadable-')), hasLength(1));
+  });
+
+  test('wrong-shaped saved files are kept aside instead of crashing', () {
+    final disk = MemoryDisk()
+      ..entries['records'] = '{"a":5}'
+      ..entries['dirty'] = '[1]'
+      ..entries['settings'] = '[]';
+    final store = RecordStore(disk);
+    expect(store.loadErrors, unorderedEquals(['records', 'dirty', 'settings']));
+    expect(store.records['a'], isNull);
+    expect(store.settings['lang'], 'id');
   });
 
   test('put stamps updatedAt and marks dirty', () {

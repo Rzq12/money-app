@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart' show Key;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:kasku_plus/app.dart';
@@ -68,6 +69,28 @@ void main() {
     expect(find.text('Masuk ke Kasku+'), findsOneWidget);
     expect(find.text('Kata sandi'), findsOneWidget);
     app.engine.dispose();
+  });
+
+  testWidgets('sign-in with a full disk says so and stays signed out', (tester) async {
+    final disk = MemoryDisk();
+    final store = RecordStore(disk);
+    late Auth auth;
+    final api = Api(MockClient((r) async => http.Response('{"access_token":"u1","refresh_token":"r","expires_in":3600,"user":{"id":"u1"}}', 200)),
+        baseUrl: 'https://x.supabase.co', anonKey: 'anon', token: () => auth.session?.accessToken);
+    auth = Auth(api, MemorySessionStore());
+    final engine = SyncEngine(store, api, auth, disk);
+    await tester.pumpWidget(KaskuApp(store: store, auth: auth, engine: engine));
+    disk.full = true;
+    await tester.enterText(find.byKey(const Key('email')), 'a@b.c');
+    await tester.enterText(find.byKey(const Key('password')), 'long enough');
+    await tester.runAsync(() async {
+      await tester.tap(find.byKey(const Key('submit')));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+    await tester.pump();
+    expect(auth.session, isNull);
+    expect(find.textContaining('Penyimpanan perangkat penuh'), findsOneWidget);
+    engine.dispose();
   });
 
   testWidgets('short password is refused before any request', (tester) async {

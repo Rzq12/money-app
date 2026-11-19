@@ -11,6 +11,13 @@ import 'disk.dart';
 
 export 'defaults.dart' show Rec, accents, currencies, defaultRecords;
 
+/// A change could not be written because the device storage is full (or failed).
+class StorageFullException implements Exception {
+  const StorageFullException();
+  @override
+  String toString() => 'StorageFullException';
+}
+
 const _recKey = 'records';
 const _setKey = 'settings';
 const _dirtyKey = 'dirty';
@@ -19,20 +26,16 @@ int _now() => DateTime.now().millisecondsSinceEpoch;
 
 class RecordStore extends ChangeNotifier {
   RecordStore(this._disk) {
-    final loaded = _load(_recKey);
-    _records = {
-      ...defaultRecords(),
-      if (loaded is Map) for (final e in loaded.entries) e.key as String: Map<String, Object?>.from(e.value as Map),
-    };
-    final s = _load(_setKey);
-    var settings = {...defaultSettings, 'themeV': 1, if (s is Map) ...Map<String, Object?>.from(s)};
+    final loaded = _load(_recKey, (j) => {for (final e in (j! as Map).entries) e.key as String: Map<String, Object?>.from(e.value as Map)});
+    _records = {...defaultRecords(), ...?loaded};
+    final s = _load(_setKey, (j) => Map<String, Object?>.from(j! as Map));
+    var settings = {...defaultSettings, 'themeV': 1, ...?s};
     // Themes saved before the accent became its own setting reset to the default accent once.
     if (settings['themeV'] != 2 || !accents.contains(settings['theme'])) {
       settings = {...settings, 'theme': accents.first, 'themeV': 2};
     }
     _settings = settings;
-    final d = _load(_dirtyKey);
-    _dirty = {if (d is List) ...d.cast<String>()};
+    _dirty = _load(_dirtyKey, (j) => {for (final id in j! as List) id as String}) ?? {};
   }
 
   final Disk _disk;
@@ -55,17 +58,28 @@ class RecordStore extends ChangeNotifier {
   /// Fires when a change could not be written (device storage full).
   Stream<Object> get errors => _errors.stream;
 
-  Object? _load(String key) {
-    final raw = _disk.read(key);
-    if (raw == null) return null;
+  /// Reads and parses one saved blob. Anything unreadable (bytes that are not UTF-8, broken JSON,
+  /// JSON of the wrong shape) is kept aside and reported in [loadErrors]; the store then starts
+  /// from the defaults for that key instead of failing to open.
+  T? _load<T>(String key, T Function(Object? json) parse) {
+    String? raw;
     try {
-      return jsonDecode(raw);
-    } on FormatException {
-      _disk.keepAside(key, raw);
+      raw = _disk.read(key);
+      if (raw == null) return null;
+      return parse(jsonDecode(raw));
+    } catch (_) {
+      // FileDisk already set aside a file it could not decode (raw is null then).
+      if (raw != null) _disk.keepAside(key, raw);
       loadErrors.add(key);
       return null;
     }
   }
+
+  bool _writeFailed = false;
+
+  /// True when the most recent change could not be written (storage full); merge and resetAll
+  /// return false both for "nothing to change" and for this, so callers that must know check here.
+  bool get writeFailed => _writeFailed;
 
   void _write(Map<String, Rec> r, Map<String, Object?> s, Set<String> d) {
     _disk.writeAll({_recKey: jsonEncode(r), _setKey: jsonEncode(s), _dirtyKey: jsonEncode(d.toList())});
@@ -83,8 +97,10 @@ class RecordStore extends ChangeNotifier {
         // The keys that failed still hold the old copy.
       }
       _errors.add(e);
+      _writeFailed = true;
       return false;
     }
+    _writeFailed = false;
     _records = r;
     _settings = s;
     _dirty = d;
@@ -147,7 +163,11 @@ class RecordStore extends ChangeNotifier {
         markDirty ? d.add(id) : d.remove(id);
       }
     }
-    if (!changed || !_commit(recs, _settings, d)) return false;
+    if (!changed) {
+      _writeFailed = false;
+      return false;
+    }
+    if (!_commit(recs, _settings, d)) return false;
     notifyListeners();
     return true;
   }
@@ -159,9 +179,11 @@ class RecordStore extends ChangeNotifier {
   }
 
   /// Back to the starter data, keeping only the language (sign-out, switching accounts).
-  void resetAll() {
-    _commit(defaultRecords(), {...defaultSettings, 'lang': _settings['lang']}, {});
+  /// Returns false when the reset could not be written; the old copy is then still in place.
+  bool resetAll() {
+    if (!_commit(defaultRecords(), {...defaultSettings, 'lang': _settings['lang']}, {})) return false;
     notifyListeners();
+    return true;
   }
 
   @override
