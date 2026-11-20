@@ -47,6 +47,11 @@ class SyncEngine extends ChangeNotifier {
     _loadState();
     _lastSettings = _settingsKey();
     store.addListener(_onStoreChanged);
+    // The records file was set aside at start-up: forget the cursors so everything is pulled again.
+    if (store.loadErrors.contains('records') && _cursors.isNotEmpty) {
+      _cursors = {};
+      _saveState();
+    }
     _status = SyncStatus(
       phase: auth.session == null ? SyncPhase.off : SyncPhase.idle,
       pending: _pendingCount(),
@@ -68,6 +73,14 @@ class SyncEngine extends ChangeNotifier {
 
   late SyncStatus _status;
   SyncStatus get status => _status;
+
+  // A run still in flight when the engine is disposed finishes quietly.
+  bool _disposed = false;
+
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
 
   bool get configured => api.baseUrl.isNotEmpty && api.anonKey.isNotEmpty;
 
@@ -234,7 +247,7 @@ class SyncEngine extends ChangeNotifier {
     }
     final run = _doSync().whenComplete(() {
       _running = null;
-      if (_again) {
+      if (_again && !_disposed) {
         _again = false;
         syncNow();
       }
@@ -243,6 +256,7 @@ class SyncEngine extends ChangeNotifier {
   }
 
   Future<void> _doSync() async {
+    _refreshedAfter401 = false;
     try {
       await _syncOnce();
     } finally {
@@ -253,8 +267,10 @@ class SyncEngine extends ChangeNotifier {
   Timer? _timer;
   Timer? _retryTimer;
   int _retryDelay = 2000;
+  bool _refreshedAfter401 = false;
 
   void _schedule([Duration delay = _debounce]) {
+    if (_disposed) return;
     _setStatus();
     _timer?.cancel();
     _timer = Timer(delay, syncNow);
@@ -292,6 +308,17 @@ class SyncEngine extends ChangeNotifier {
       _retry(SyncPhase.error, 'storage full');
     } on ApiException catch (e) {
       if (e.status == 401) {
+        // The token can look fresh locally but be rejected (device clock moved back, token revoked):
+        // one forced refresh and a fresh run first; only a rejected refresh signs out.
+        if (!_refreshedAfter401) {
+          _refreshedAfter401 = true;
+          try {
+            if (await auth.refreshNow()) return await _syncOnce();
+          } catch (err) {
+            _retry(_network(err) ? SyncPhase.offline : SyncPhase.error, '$err');
+            return;
+          }
+        }
         await auth.expire();
         _setStatus(phase: SyncPhase.off, error: e.message);
         return;
@@ -303,6 +330,7 @@ class SyncEngine extends ChangeNotifier {
   }
 
   void _retry(SyncPhase phase, String error) {
+    if (_disposed) return;
     _setStatus(phase: phase, error: error);
     _retryTimer?.cancel();
     _retryTimer = Timer(Duration(milliseconds: _retryDelay), syncNow);
@@ -327,11 +355,14 @@ class SyncEngine extends ChangeNotifier {
 
   Future<List<DbRow>> _get(String path) async => [for (final r in (await _call(path) as List?) ?? const []) Map<String, Object?>.from(r as Map)];
 
-  Future<({List<DbRow> rows, String? cursor})> _pullTable(String table) async {
+  /// Rows of [table] changed since its cursor (minus the overlap). [since] is that lower bound
+  /// (null for a full pull): only rows with a later server_ts were fetched.
+  Future<({List<DbRow> rows, String? cursor, String? since})> _pullTable(String table) async {
     final rows = <DbRow>[];
     var cursor = _cursors[table];
     final from = cursor == null ? null : DateTime.tryParse(cursor);
     var after = from == null ? cursor : from.subtract(_overlap).toUtc().toIso8601String();
+    final since = after;
     while (true) {
       final page = await _get('/rest/v1/$table?select=*&order=server_ts.asc&limit=$_page${after != null ? '&server_ts=${_q('gt.$after')}' : ''}');
       rows.addAll(page);
@@ -341,7 +372,7 @@ class SyncEngine extends ChangeNotifier {
       }
       if (page.length < _page) break;
     }
-    return (rows: rows, cursor: cursor);
+    return (rows: rows, cursor: cursor, since: since);
   }
 
   Future<void> _pull() async {
@@ -371,8 +402,28 @@ class SyncEngine extends ChangeNotifier {
           final at = _n(rec['updatedAt']).round();
           ch.fold(rec, list.where((c) => _n(c['updated_at']) == at).toList());
         }
+        // A pulled parent with no pulled children: if the parent is newer than the child window's
+        // lower bound its children (written right after it) would have been fetched, so it has none.
+        // An older parent (pulled again by its own overlap window) may have children outside the
+        // child window; those are fetched by id instead of being emptied.
+        final older = <String>[];
         for (final r in pulled.rows) {
-          if (!groups.containsKey(r['id'])) ch.fold(recs[r['id']]!, []);
+          if (groups.containsKey(r['id'])) continue;
+          final ts = r['server_ts'] as String?;
+          if (cp.since != null && ts != null && ts.compareTo(cp.since!) <= 0) {
+            older.add(r['id']! as String);
+          } else {
+            ch.fold(recs[r['id']]!, []);
+          }
+        }
+        for (var j = 0; j < older.length; j += _childChunk) {
+          final part = older.sublist(j, (j + _childChunk).clamp(0, older.length));
+          final crow = await _get('/rest/v1/${ch.table}?select=*&${ch.fk}=${_q(_inList(part))}');
+          for (final id in part) {
+            final rec = recs[id]!;
+            final at = _n(rec['updatedAt']).round();
+            ch.fold(rec, crow.where((c) => c[ch.fk] == id && _n(c['updated_at']) == at).toList());
+          }
         }
       }
       incoming.addAll(recs.values);
@@ -398,8 +449,8 @@ class SyncEngine extends ChangeNotifier {
         'lang': s['lang'],
         'currency': s['currency'],
         'dark': s['dark'] == true,
-        if (s['accent'] != null) 'theme': s['accent'],
-        if (s['book_id'] != null) 'bookId': s['book_id'],
+        if (s['accent'] case final String accent when accent.isNotEmpty) 'theme': accent,
+        if (s['book_id'] case final String book when book.isNotEmpty) 'bookId': book,
       });
       _applyingRemote = false;
       if (store.writeFailed) throw const StorageFullException();
@@ -508,6 +559,7 @@ class SyncEngine extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     store.removeListener(_onStoreChanged);
     for (final s in _subs) {
       s.cancel();

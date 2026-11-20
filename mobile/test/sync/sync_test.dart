@@ -301,6 +301,80 @@ void main() {
     expect(server.row('bills', 'u1', 'z'), isNotNull);
   });
 
+  test('a 401 for a token the device thinks is fresh is retried once after a refresh', () async {
+    final server = FakePostgrest();
+    final a = Device(server);
+    await a.signIn('u1');
+    server.revoked.add('u1'); // e.g. the device clock moved back after sign-in
+    a.store.put(bill('b1'));
+    await a.engine.syncNow();
+    expect(a.auth.session, isNotNull);
+    expect(a.auth.session!.accessToken, isNot('u1'));
+    expect(server.row('bills', 'u1', 'b1'), isNotNull);
+    expect(a.engine.status.phase, SyncPhase.idle);
+  });
+
+  test('empty accent or book from the server leaves the local settings alone', () async {
+    final server = FakePostgrest();
+    final ahead = DateTime.now().millisecondsSinceEpoch + 3600 * 1000;
+    server.seed('user_settings', 'u1', {'user_id': 'u1', 'lang': 'en', 'currency': 'IDR', 'dark': false, 'accent': '', 'book_id': '', 'updated_at': ahead});
+    final a = Device(server);
+    await a.signIn('u1');
+    expect(a.store.settings['lang'], 'en');
+    expect(a.store.settings['theme'], accents.first);
+    expect(a.store.settings['bookId'], 'book-default');
+  });
+
+  test('a run finishing after dispose does not throw', () async {
+    final server = FakePostgrest();
+    final a = Device(server);
+    await a.signIn('u1');
+    a.store.put(bill('b1'));
+    final run = a.engine.syncNow();
+    a.engine.dispose();
+    await run;
+  });
+
+  test('a parent pulled again by the overlap window keeps children outside the child window', () async {
+    final server = FakePostgrest();
+    server.seed('debts', 'u1', {'id': 'd', 'dir': 'lend', 'person': 'Ana', 'amount': 100, 'updated_at': 100, 'deleted': false});
+    server.replaceChildren('debt_payments', 'debt_id', 'u1', 'd', [
+      {'idx': 0, 'amount': 10, 'time': '2026-11-01T05:00:00.000Z', 'updated_at': 100},
+    ]);
+    server.seed('debts', 'u1', {'id': 'e', 'dir': 'lend', 'person': 'Budi', 'amount': 50, 'updated_at': 100, 'deleted': false});
+    server.replaceChildren('debt_payments', 'debt_id', 'u1', 'e', [
+      {'idx': 0, 'amount': 5, 'time': '2026-11-01T05:00:00.000Z', 'updated_at': 100},
+    ]);
+    final a = Device(server);
+    await a.signIn('u1');
+    server.advance(const Duration(minutes: 10));
+    server.replaceChildren('debt_payments', 'debt_id', 'u1', 'e', [
+      {'idx': 0, 'amount': 5, 'time': '2026-11-01T05:00:00.000Z', 'updated_at': 100},
+      {'idx': 1, 'amount': 6, 'time': '2026-11-02T05:00:00.000Z', 'updated_at': 100},
+    ]);
+    await a.engine.syncNow();
+    await a.engine.syncNow();
+    expect((a.store.records['d']!['payments'] as List).length, 1);
+    expect((a.store.records['e']!['payments'] as List).length, 2);
+  });
+
+  test('after the records file was set aside the next sync pulls everything again', () async {
+    final server = FakePostgrest();
+    final a = Device(server);
+    await a.signIn('u1');
+    server.seed('bills', 'u1', {'id': 'old', 'type': 'expense', 'amount': 1, 'updated_at': 100, 'deleted': false});
+    await a.engine.syncNow();
+    expect(a.store.records['old'], isNotNull);
+    server.advance(const Duration(minutes: 10));
+    server.seed('bills', 'u1', {'id': 'new', 'type': 'expense', 'amount': 2, 'updated_at': 100, 'deleted': false});
+    await a.engine.syncNow(); // the bills cursor is now well past 'old'
+    a.disk.entries['records'] = '{broken';
+    final store = RecordStore(a.disk);
+    final engine = SyncEngine(store, a.api, a.auth, a.disk);
+    await engine.syncNow();
+    expect(store.records['old'], isNotNull);
+  });
+
   test('sync state survives a restart', () async {
     final server = FakePostgrest();
     final a = Device(server);

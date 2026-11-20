@@ -134,7 +134,8 @@ class RecordStore extends ChangeNotifier {
     for (final rec in recs) {
       final id = rec['id']! as String;
       final old = next[id];
-      next[id] = {...?old, ...rec, 'updatedAt': keepTime && old != null ? (old['updatedAt'] as num? ?? 0) : now};
+      final prev = ((old?['updatedAt'] as num?) ?? 0).floor();
+      next[id] = {...?old, ...rec, 'updatedAt': keepTime && old != null ? (old['updatedAt'] as num? ?? 0) : (now > prev ? now : prev + 1)};
       d.add(id);
     }
     if (!_commit(next, _settings, d)) return false;

@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -21,30 +19,6 @@ class LedgerScreen extends StatefulWidget {
 }
 
 class _LedgerScreenState extends State<LedgerScreen> {
-  StreamSubscription<Object>? _errors;
-
-  @override
-  void initState() {
-    super.initState();
-    final store = widget.store;
-    _errors = store.errors.listen((_) => _notify('storageFull'));
-    if (store.loadErrors.isNotEmpty) {
-      store.loadErrors.clear();
-      WidgetsBinding.instance.addPostFrameCallback((_) => _notify('storageRecovered'));
-    }
-  }
-
-  void _notify(String key) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('${widget.store.settings['lang']}', key))));
-  }
-
-  @override
-  void dispose() {
-    _errors?.cancel();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) => ListenableBuilder(
         listenable: widget.store,

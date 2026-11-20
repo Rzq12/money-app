@@ -134,6 +134,14 @@ class Auth extends ChangeNotifier {
     final s = _session;
     if (s == null) return false;
     if (_now() < s.expiresAt - 60000) return true;
+    return refreshNow();
+  }
+
+  /// Refreshes the access token now, whatever its expiry says (the server rejected it).
+  /// Same results as [ensureFresh].
+  Future<bool> refreshNow() async {
+    final s = _session;
+    if (s == null) return false;
     try {
       await _keep(await _api.call('/auth/v1/token?grant_type=refresh_token', method: 'POST', auth: false, body: {'refresh_token': s.refreshToken}));
       return true;

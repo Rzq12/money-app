@@ -93,6 +93,38 @@ void main() {
     engine.dispose();
   });
 
+  testWidgets('a TLS failure at sign-in reads as offline', (tester) async {
+    final store = RecordStore(MemoryDisk());
+    final api = Api(MockClient((r) async => throw const HandshakeException('CERTIFICATE_VERIFY_FAILED')), baseUrl: 'https://x.supabase.co', anonKey: 'anon', token: () => null);
+    final auth = Auth(api, MemorySessionStore());
+    final engine = SyncEngine(store, api, auth, MemoryDisk());
+    await tester.pumpWidget(KaskuApp(store: store, auth: auth, engine: engine));
+    await tester.enterText(find.byKey(const Key('email')), 'a@b.c');
+    await tester.enterText(find.byKey(const Key('password')), 'long enough');
+    await tester.runAsync(() async {
+      await tester.tap(find.byKey(const Key('submit')));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+    await tester.pump();
+    expect(find.text('Butuh koneksi internet untuk masuk pertama kali.'), findsOneWidget);
+    engine.dispose();
+  });
+
+  testWidgets('a failed save is reported on any screen, not only the ledger', (tester) async {
+    final app = offlineApp(signedIn: false);
+    final disk = MemoryDisk();
+    final store = RecordStore(disk);
+    final engine = SyncEngine(store, app.engine.api, app.auth, disk);
+    await tester.pumpWidget(KaskuApp(store: store, auth: app.auth, engine: engine));
+    disk.full = true;
+    store.put({'id': 'x', 'kind': 'bill', 'amount': 1});
+    await tester.pump();
+    await tester.pump();
+    expect(find.textContaining('Penyimpanan perangkat penuh'), findsOneWidget);
+    engine.dispose();
+    app.engine.dispose();
+  });
+
   testWidgets('short password is refused before any request', (tester) async {
     final requests = <Object>[];
     final store = RecordStore(MemoryDisk());
