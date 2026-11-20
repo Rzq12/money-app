@@ -2,6 +2,8 @@
 
 Kasku+ versi HP memakai [Capacitor](https://capacitorjs.com): kode React yang sama dibungkus jadi aplikasi native di `android/` dan `ios/`.
 
+> Versi HP sedang dipindah ke **Flutter** (Android & iOS, tanpa Swift). Rencananya ada di [docs/superpowers/plans/2026-11-19-flutter-mobile-migration.md](docs/superpowers/plans/2026-11-19-flutter-mobile-migration.md). Sampai tahap terakhir (cutover) selesai, petunjuk Capacitor di bawah tetap berlaku.
+
 ## Persiapan
 
 1. Salin `.env.example` menjadi `.env.development` (DB dev) dan, nanti, `.env.production` (DB prod). Isi `VITE_SUPABASE_URL` serta `VITE_SUPABASE_ANON_KEY`; nilainya ikut dibundel saat build.
