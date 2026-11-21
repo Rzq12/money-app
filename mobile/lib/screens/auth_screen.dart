@@ -77,10 +77,12 @@ class _AuthScreenState extends State<AuthScreen> {
           _mode = _Mode.signIn;
       }
     } on StorageFullException {
-      _error = t('storageFull');
+      // The app-wide storage notice already says what happened; the user stays signed out.
+      _error = null;
     } on ApiException catch (e) {
       _error = _explain(e);
-    } on SocketException {
+    } on IOException {
+      // No network, DNS, or a TLS failure (captive portal): all read as "you need a connection".
       _error = t('authOffline');
     } on http.ClientException {
       _error = t('authOffline');

@@ -125,6 +125,18 @@ void main() {
     expect(second, greaterThan(first));
   });
 
+  test('putMany also stamps an edit after the copy it edits', () {
+    final store = RecordStore(MemoryDisk());
+    final future = DateTime.now().millisecondsSinceEpoch + 100000;
+    store.merge([
+      {'id': 'x', 'kind': 'bill', 'amount': 1, 'updatedAt': future},
+    ]);
+    store.putMany([
+      {'id': 'x', 'amount': 2},
+    ]);
+    expect(store.records['x']!['updatedAt'] as num, greaterThan(future));
+  });
+
   test('localChanges fires on put but not on merge', () async {
     final store = RecordStore(MemoryDisk());
     var n = 0;

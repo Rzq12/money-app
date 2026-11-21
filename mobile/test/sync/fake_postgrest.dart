@@ -18,6 +18,10 @@ class FakePostgrest {
   /// Every PostgREST call answers 401 while set (expired / revoked token).
   bool unauthorized = false;
 
+  /// Access tokens the server rejects with 401 (a refresh issues a new one).
+  final Set<String> revoked = {};
+  int _refreshes = 0;
+
   /// Awaited before an upsert into the named table is applied.
   Future<void> Function(String table)? beforeUpsert;
 
@@ -68,10 +72,16 @@ class FakePostgrest {
       final email = (jsonDecode(req.body) as Map)['email'] as String;
       return _json(200, {'access_token': email, 'refresh_token': 'r-$email', 'expires_in': 3600, 'user': {'id': email, 'email': email}});
     }
+    if (path == '/auth/v1/token' && req.url.queryParameters['grant_type'] == 'refresh_token') {
+      final user = ((jsonDecode(req.body) as Map)['refresh_token'] as String).replaceFirst('r-', '');
+      _refreshes++;
+      return _json(200, {'access_token': '$user#$_refreshes', 'refresh_token': 'r-$user', 'expires_in': 3600, 'user': {'id': user, 'email': user}});
+    }
     if (path.startsWith('/auth/')) return _json(200, {});
     if (!path.startsWith('/rest/v1/')) return _json(404, {'message': 'not found'});
-    if (unauthorized) return _json(401, {'message': 'JWT expired', 'code': 'PGRST301'});
-    final user = (req.headers['Authorization'] ?? '').replaceFirst('Bearer ', '');
+    final token = (req.headers['Authorization'] ?? '').replaceFirst('Bearer ', '');
+    if (unauthorized || revoked.contains(token)) return _json(401, {'message': 'JWT expired', 'code': 'PGRST301'});
+    final user = token.split('#').first;
     final table = path.substring('/rest/v1/'.length);
     if (table == 'rpc/seed_user') return _json(204, null);
     final q = req.url.queryParameters;
